@@ -34,7 +34,5 @@ def process_folder(folder_path):
         if filename.lower().endswith(".pdf"):
             update_file_creation_date(folder_path, filename)
 
-
-# Beispielaufruf der Funktion
 folder_path = r"C:\Users\Shadow\Desktop\Python\Test"
 process_folder(folder_path)
