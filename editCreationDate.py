@@ -34,5 +34,5 @@ def process_folder(folder_path):
         if filename.lower().endswith(".pdf"):
             update_file_creation_date(folder_path, filename)
 
-folder_path = r"---" # Pfad zum Ordner mit den PDFs
+folder_path = input(r"Folder path: ") # Pfad zum Ordner mit den PDFs
 process_folder(folder_path)
