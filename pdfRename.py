@@ -28,7 +28,7 @@ def load_keywords_from_file(filename):
     return keywords
 
 def extract_title(text):
-    keywords = load_keywords_from_file('keywords.txt')
+    keywords = load_keywords_from_file('./components/keywords.txt')
     for keyword in keywords:
         pattern = r"\b{}\w*\b".format(keyword)
         match = re.search(pattern, text, re.IGNORECASE)
