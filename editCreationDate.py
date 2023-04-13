@@ -34,5 +34,21 @@ def process_folder(folder_path):
         if filename.lower().endswith(".pdf"):
             update_file_creation_date(folder_path, filename)
 
-folder_path = input(r"Folder path: ")
-process_folder(folder_path)
+def main():
+    print("\nEdit Creation Date Tool\n")
+    print("===============")
+    print("Type exit to quit the program.")
+    print("===============\n")
+
+    folder_path = input("Folder path: ")
+
+    print("Creation date edit done.\n")
+
+    while folder_path.lower() != 'exit':
+        process_folder(folder_path)
+        folder_path = input("Folder path: ")
+
+        print("Creation date edit done.\n")
+
+if __name__ == '__main__':
+    main()

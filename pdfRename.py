@@ -38,7 +38,7 @@ def extract_title(text):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(0).replace(" ", "_")
-    return "Unbenannt"
+    return "Unknown"
 
 def rename_pdf(pdf_path, new_name):
     folder = os.path.dirname(pdf_path)
@@ -58,15 +58,28 @@ def process_pdf(pdf_path):
     if date:
         new_pdf_name = f"{date.strftime('%Y%m%d')}_{title}.pdf"
         new_pdf_path = rename_pdf(pdf_path, new_pdf_name)
-        print(f"PDF umbenannt nach: {new_pdf_path}")
+        print(f"PDF renamed to: {new_pdf_path}")
     else:
-        print(f"Kein Datum gefunden in {pdf_path}.")
+        print(f"No date found in {pdf_path}.")
 
 def list_pdf_files(folder):
     return [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.pdf')]
 
-pdf_folder = input(r"Folder Path: ")
-pdf_files = list_pdf_files(pdf_folder)
+def main():
+    print("\nPDF Rename Tool\n")
+    print("===============")
+    print("Type exit to quit the program.")
+    print("===============\n")
 
-for pdf_path in pdf_files:
-    process_pdf(pdf_path)
+    pdf_folder = input(r"Folder Path: ")
+
+    while pdf_folder.lower() != 'exit':
+        pdf_files = list_pdf_files(pdf_folder)
+
+        for pdf_path in pdf_files:
+            process_pdf(pdf_path)
+
+        pdf_folder = input(r"Folder Path: ")
+
+if __name__ == '__main__':
+    main()
