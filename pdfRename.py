@@ -22,16 +22,13 @@ def extract_date(text):
 
     return None
 
+def load_keywords_from_file(filename):
+    with open(filename, 'r', encoding='utf-8') as file:
+        keywords = [line.strip() for line in file.readlines()]
+    return keywords
+
 def extract_title(text):
-    keywords = ["Rechnung", "Vertrag", "Angebot", "Mahnung", "Protokoll", "Darlehen", "Kredit", "Kontoauszug", "Finanzierung",
-                "Immobilie", "Versicherung", "Kündigung", "Kündigungsbestätigung", "Kündigungsbestaetigung", "Kündigungsschreiben",
-                "Zuschlag", "Zuschlagsbestätigung", "Zuschlagsbestaetigung", "Zuschlagsbestätigung", "Zuschlagsbestaetigung",
-                "Kinderzuschlag", "Kindergeld", "Kindergeldantrag", "Kindergeldantragsformular", "Kindergeldantragsformular",
-                "Krank", "Krankmeldung", "Krankmeldung", "Krankmeldung", "Krankmeldung", "Krankmeldung", "Krankmeldung",
-                "Arbeit", "Arzt", "Tierarzt", "Kindergarten", "Kinderbetreuung", "Kinderbetreuungskosten", "Kinderbetreuungskosten",
-                "Finanzierungsübersicht", "Finanzierungsuebersicht", "Finanzierungsuebersicht", "Finanzierungsuebersicht", "Betreuungsvertrag",
-                "Eltern", "Elterngeld", "Elterngeldantrag", "Elterngeldantragsformular", "Elterngeldantragsformular", "Elterngeldantragsformular",
-                "Betreuungsgeld", "Familien", "Familiengeld", "Familiengeldantrag", "Familiengeldantragsformular", "Familiengeldantragsformular"]
+    keywords = load_keywords_from_file('keywords.txt')
     for keyword in keywords:
         pattern = r"\b{}\w*\b".format(keyword)
         match = re.search(pattern, text, re.IGNORECASE)
