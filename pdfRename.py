@@ -64,7 +64,7 @@ def process_pdf(pdf_path):
 def list_pdf_files(folder):
     return [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.pdf')]
 
-pdf_folder = r"---" # Pfad zum Ordner mit den PDFs
+pdf_folder = input(r"Folder Path: ")
 pdf_files = list_pdf_files(pdf_folder)
 
 for pdf_path in pdf_files:
