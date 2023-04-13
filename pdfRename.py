@@ -5,10 +5,14 @@ import dateparser
 
 def extract_date(text):
     patterns = [
-        r'(?:Ort\s*,\s*D[au]tum)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',    # Ort, Datum
-        r'(?:D[au]tum\s*,\s*Ort)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',    # Datum
-        r'(?:Unterschrift(?:en)?)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',   # Unterschriftenfeld mit Datum
-        r'\b\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}\b',                                                            # Erstes gefundenes Datum
+        # Ort, Datum
+        r'(?:Ort\s*,\s*D[au]tum)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',
+        # Datum
+        r'(?:D[au]tum\s*,\s*Ort)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',
+        # Unterschriftenfeld mit Datum
+        r'(?:Unterschrift(?:en)?)\s*[:\-]?\s*(\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}|\d{1,2}\.\d{1,2}\.\d{4})',
+        # Erstes gefundenes Datum
+        r'\b\d{1,2}\.\s*[A-Za-zäÄöÖüÜß]+\s*\d{4}\b',
         r'\b\d{1,2}\.\d{1,2}\.\d{4}\b'
     ]
 

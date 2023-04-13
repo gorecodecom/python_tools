@@ -34,6 +34,7 @@ Kündigungsschreiben
 Mahnung
 Protokoll
 Rechnung
+RingRente
 Tierarzt
 Versicherung
 Vertrag
