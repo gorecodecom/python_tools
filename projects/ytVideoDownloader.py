@@ -1,5 +1,6 @@
 from pytube import YouTube
 
+
 def download():
     link = input("Enter the link of YouTube video you want to download: ")
     yt = YouTube(link)
@@ -8,5 +9,6 @@ def download():
     yt_resolution.download()
     print("Download completed!!")
     download()
+
 
 download()
