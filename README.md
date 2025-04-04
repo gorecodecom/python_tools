@@ -1,53 +1,118 @@
+# Python Tools Collection
 
-# Various Python Tools
+This repository contains a collection of Python utilities for file management and media tasks.
 
-This repository contains a collection of Python scripts serving different purposes:
+## Tools Overview
 
-### editCreationDate.py<br>
-Updates the creation date of files based on their name.
+### 1. editCreationDate.py
 
-### pdfRename.py<br>
-Renames PDF files by extracting a date and a title from the text of the PDF.
-### ytVideoDownloader.py<br>
-Allows for downloading YouTube videos by entering the corresponding link.<br>
+A utility to modify file creation dates based on dates encoded in filenames.
 
-#### Usage<br>
-Each script can be run directly. You will be prompted for the path to the corresponding folder or the YouTube link.<br><br>
+#### Features
+- Updates creation dates of PDF files based on dates in their filenames
+- Supports multiple filename patterns:
+  - `YYYYMMDD_*.pdf` (e.g., 20230415_document.pdf)
+  - `YYYY-MM-DD_*.pdf` (e.g., 2023-04-15_document.pdf)
+  - `*_YYYYMMDD.pdf` (e.g., invoice_20230415.pdf)
+- Cross-platform support (Windows, macOS, Linux)
+- Recursive directory processing
+- Progress bars for better user experience
+- Detailed logging of operations
+- Dry-run mode to preview changes
+- Command-line interface with various options
 
-<p>1. editCreationDate.py<br>
-Run the script in your terminal. You will be prompted to enter a folder path. The script will then process all PDF files in that folder, looking for a date in the format YYYYMMDD at the start of each filename. If it finds such a date, it will update the file's creation date to match.</p>
+#### Usage
+```
+usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
 
-<p>2. pdfRename.py<br>
-Run the script in your terminal. You will be prompted to enter a folder path. The script will then process all PDF files in that folder. It will try to extract a date and a title from the text of each PDF. If it finds a date, it will rename the file to be "YYYYMMDD_title.pdf".</p>
+Update PDF file creation dates based on filename patterns
 
-<p>#### 3. ytVideoDownloader.py<br>
-Run the script in your terminal. You will be prompted to enter a YouTube link. The script will then download the video at the highest available resolution.</p>
+positional arguments:
+  folders              Folders to process (optional, can input during execution)
 
+options:
+  -h, --help           show this help message and exit
+  -r, --recursive      Process subfolders recursively
+  -m, --modified-date  Also update modified date
+  -d, --dry-run        Don't make changes, just preview
+  -v, --verbose        Enable verbose logging
+```
 
-## Prerequisites
+Examples:
+```
+# Process a specific folder
+python editCreationDate.py /path/to/folder
 
-The scripts require Python 3.6 or higher and the following packages:
+# Process multiple folders recursively
+python editCreationDate.py -r /path/to/folder1 /path/to/folder2
 
-- os
-- re
-- datetime
-- platform
-- pywintypes
-- win32file
-- pdfplumber
-- dateparser
-- pytube
+# Preview changes without modifying files
+python editCreationDate.py -d /path/to/folder
 
-These packages can be installed with pip:
+# Run interactively
+python editCreationDate.py
+```
 
-pip install pywintypes win32file pdfplumber dateparser pytube
+### 2. pdfRename.py
 
+Renames PDF files by extracting dates and titles from the PDF content.
+
+#### Features
+- Extracts dates and titles from PDF text content
+- Renames files to a standardized format (YYYYMMDD_title.pdf)
+- Handles various date formats using dateparser
+- Can process entire folders of PDF files
+
+#### Usage
+Run the script in your terminal. You will be prompted to enter a folder path. The script processes all PDF files in that folder, extracting dates and titles to rename them in a structured format.
+
+### 3. ytVideoDownloader.py
+
+A simple YouTube video downloader.
+
+#### Features
+- Downloads YouTube videos at the highest available resolution
+- Simple command-line interface
+- Progress tracking during download
+
+#### Usage
+Run the script in your terminal. When prompted, enter a YouTube link, and the script will download the video at the highest available resolution.
+
+## Installation
+
+### Prerequisites
+- Python 3.6 or higher
+
+### Required Packages
+Different tools require different packages:
+
+#### For editCreationDate.py
+```
+pip install tqdm
+# For Windows only:
+pip install pywin32
+```
+
+#### For pdfRename.py
+```
+pip install pdfplumber dateparser
+```
+
+#### For ytVideoDownloader.py
+```
+pip install pytube
+```
+
+### All Dependencies
+To install all dependencies:
+```
+pip install tqdm pywin32 pdfplumber dateparser pytube
+```
 
 ## Author
 
-The scripts were created by Heiko Goretzki.
-
+These scripts were created by Heiko Goretzki.
 
 ## License
 
-These projects are licensed under the MIT License - see the LICENSE.md file for details.
+This project is licensed under the MIT License - see the LICENSE.md file for details.
