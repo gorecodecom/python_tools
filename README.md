@@ -24,7 +24,7 @@ A utility to modify file creation dates based on dates encoded in filenames.
 
 #### Usage
 
-```
+```console
 usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
 
 Update PDF file creation dates based on filename patterns
@@ -42,7 +42,7 @@ options:
 
 Examples:
 
-```
+```bash
 # Process a specific folder
 python editCreationDate.py /path/to/folder
 
@@ -68,6 +68,7 @@ Renames PDF files by extracting dates and titles from the PDF content.
 - Can process entire folders of PDF files
 
 #### Usage
+
 Run the script in your terminal. You will be prompted to enter a folder path. The script processes all PDF files in that folder, extracting dates and titles to rename them in a structured format.
 
 ### 3. ytVideoDownloader.py
@@ -81,6 +82,7 @@ A simple YouTube video downloader.
 - Progress tracking during download
 
 #### Usage
+
 Run the script in your terminal. When prompted, enter a YouTube link, and the script will download the video at the highest available resolution.
 
 ## Installation
@@ -90,11 +92,12 @@ Run the script in your terminal. When prompted, enter a YouTube link, and the sc
 - Python 3.6 or higher
 
 ### Required Packages
+
 Different tools require different packages:
 
 #### For editCreationDate.py
 
-```
+```bash
 pip install tqdm
 # For Windows only:
 pip install pywin32
@@ -102,20 +105,21 @@ pip install pywin32
 
 #### For pdfRename.py
 
-```
+```bash
 pip install pdfplumber dateparser
 ```
 
 #### For ytVideoDownloader.py
 
-```
+```bash
 pip install pytube
 ```
 
 ### All Dependencies
+
 To install all dependencies:
 
-```
+```bash
 pip install tqdm pywin32 pdfplumber dateparser pytube
 ```
 
@@ -126,4 +130,3 @@ These scripts were created by Heiko Goretzki.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE.md file for details.
-
