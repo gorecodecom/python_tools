@@ -19,7 +19,6 @@ if platform.system() == 'Windows':
     try:
         import win32file
         import win32con
-        from win32com.propsys import propsys
     except ImportError:
         logger.error("Required package 'pywin32' is not installed. Please install it using: pip install pywin32")
         raise SystemExit(1)
