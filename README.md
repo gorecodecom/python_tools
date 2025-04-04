@@ -9,6 +9,7 @@ This repository contains a collection of Python utilities for file management an
 A utility to modify file creation dates based on dates encoded in filenames.
 
 #### Features
+
 - Updates creation dates of PDF files based on dates in their filenames
 - Supports multiple filename patterns:
   - `YYYYMMDD_*.pdf` (e.g., 20230415_document.pdf)
@@ -22,8 +23,7 @@ A utility to modify file creation dates based on dates encoded in filenames.
 - Command-line interface with various options
 
 #### Usage
-```
-usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
+```usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
 
 Update PDF file creation dates based on filename patterns
 
@@ -58,6 +58,7 @@ python editCreationDate.py
 Renames PDF files by extracting dates and titles from the PDF content.
 
 #### Features
+
 - Extracts dates and titles from PDF text content
 - Renames files to a standardized format (YYYYMMDD_title.pdf)
 - Handles various date formats using dateparser
@@ -71,6 +72,7 @@ Run the script in your terminal. You will be prompted to enter a folder path. Th
 A simple YouTube video downloader.
 
 #### Features
+
 - Downloads YouTube videos at the highest available resolution
 - Simple command-line interface
 - Progress tracking during download
@@ -81,6 +83,7 @@ Run the script in your terminal. When prompted, enter a YouTube link, and the sc
 ## Installation
 
 ### Prerequisites
+
 - Python 3.6 or higher
 
 ### Required Packages
@@ -116,3 +119,4 @@ These scripts were created by Heiko Goretzki.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE.md file for details.
+
