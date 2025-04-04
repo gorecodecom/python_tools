@@ -14,18 +14,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger('file_date_editor')
 
-# Declare module variables for later conditional imports
-pywintypes = None
-win32file = None
-
-# Platform-specific imports handled when needed
-if platform.system() == 'Darwin':  # macOS
+# Platform-specific imports
+if platform.system() == 'Windows':
+    try:
+        import win32file
+        import win32con
+        from win32com.propsys import propsys
+    except ImportError:
+        logger.error("Required package 'pywin32' is not installed. Please install it using: pip install pywin32")
+        raise SystemExit(1)
+elif platform.system() == 'Darwin':  # macOS
     import subprocess
 
 def update_file_creation_date(filepath, dry_run=False):
     """Update a file's creation date based on its filename."""
     filename = os.path.basename(filepath)
-    
+
     # Support multiple filename patterns
     patterns = [
         r'^(\d{4})(\d{2})(\d{2})_.*\.pdf$',  # YYYYMMDD_*.pdf
@@ -39,40 +43,31 @@ def update_file_creation_date(filepath, dry_run=False):
             year = int(match.group(1))
             month = int(match.group(2))
             day = int(match.group(3))
-            
+
             # Validate date
             try:
                 date_time = datetime.datetime(year, month, day)
             except ValueError:
                 logger.warning(f"Invalid date in filename: {filename}")
                 return False
-                
+
             if dry_run:
                 logger.info(f"Would set creation date of {filename} to {date_time.strftime('%Y-%m-%d')}")
                 return True
-                
+
             try:
                 if platform.system() == 'Windows':
-                    # Import Windows modules only when needed
-                    global pywintypes, win32file
-                    if pywintypes is None or win32file is None:
-                        try:
-                            import pywintypes
-                            import win32file
-                        except ImportError:
-                            logger.error("Missing required Windows dependencies. Install with: pip install pywin32")
-                            return False
-                            
+                    filetime = win32file.CreateFileTime(date_time)
                     handle = win32file.CreateFile(
-                        str(filepath), 
+                        str(filepath),
                         win32file.GENERIC_WRITE,
                         win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE | win32file.FILE_SHARE_DELETE,
-                        None, 
-                        win32file.OPEN_EXISTING, 
-                        win32file.FILE_ATTRIBUTE_NORMAL, 
+                        None,
+                        win32file.OPEN_EXISTING,
+                        win32file.FILE_ATTRIBUTE_NORMAL,
                         None
                     )
-                    win32file.SetFileTime(handle, pywintypes.Time(date_time), None, None)
+                    win32file.SetFileTime(handle, filetime, None, None)
                     handle.close()
                 elif platform.system() == 'Darwin':  # macOS
                     # Format date for SetFile command
