@@ -17,10 +17,11 @@ logger = logging.getLogger('file_date_editor')
 # Platform-specific imports
 if platform.system() == 'Windows':
     try:
-        import win32file
-        import win32con
+        from win32file import CreateFile, SetFileTime, CreateFileTime, GENERIC_WRITE, FILE_SHARE_READ, \
+            FILE_SHARE_WRITE, FILE_SHARE_DELETE, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL
     except ImportError:
         logger.error("Required package 'pywin32' is not installed. Please install it using: pip install pywin32")
+        logger.error("Note: Do not try to install win32file directly - it's part of pywin32")
         raise SystemExit(1)
 elif platform.system() == 'Darwin':  # macOS
     import subprocess
@@ -56,17 +57,17 @@ def update_file_creation_date(filepath, dry_run=False):
 
             try:
                 if platform.system() == 'Windows':
-                    filetime = win32file.CreateFileTime(date_time)
-                    handle = win32file.CreateFile(
+                    filetime = CreateFileTime(date_time)
+                    handle = CreateFile(
                         str(filepath),
-                        win32file.GENERIC_WRITE,
-                        win32file.FILE_SHARE_READ | win32file.FILE_SHARE_WRITE | win32file.FILE_SHARE_DELETE,
+                        GENERIC_WRITE,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                         None,
-                        win32file.OPEN_EXISTING,
-                        win32file.FILE_ATTRIBUTE_NORMAL,
+                        OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL,
                         None
                     )
-                    win32file.SetFileTime(handle, filetime, None, None)
+                    SetFileTime(handle, filetime, None, None)
                     handle.close()
                 elif platform.system() == 'Darwin':  # macOS
                     # Format date for SetFile command
