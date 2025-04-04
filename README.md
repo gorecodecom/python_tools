@@ -23,7 +23,9 @@ A utility to modify file creation dates based on dates encoded in filenames.
 - Command-line interface with various options
 
 #### Usage
-```usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
+
+```
+usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
 
 Update PDF file creation dates based on filename patterns
 
@@ -39,6 +41,7 @@ options:
 ```
 
 Examples:
+
 ```
 # Process a specific folder
 python editCreationDate.py /path/to/folder
@@ -90,6 +93,7 @@ Run the script in your terminal. When prompted, enter a YouTube link, and the sc
 Different tools require different packages:
 
 #### For editCreationDate.py
+
 ```
 pip install tqdm
 # For Windows only:
@@ -97,17 +101,20 @@ pip install pywin32
 ```
 
 #### For pdfRename.py
+
 ```
 pip install pdfplumber dateparser
 ```
 
 #### For ytVideoDownloader.py
+
 ```
 pip install pytube
 ```
 
 ### All Dependencies
 To install all dependencies:
+
 ```
 pip install tqdm pywin32 pdfplumber dateparser pytube
 ```
