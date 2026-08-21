@@ -1,132 +1,118 @@
 # Python Tools Collection
 
-This repository contains a collection of Python utilities for file management and media tasks.
+Small command-line utilities for downloading YouTube media and organizing PDF files.
 
-## Tools Overview
+## Requirements
 
-### 1. editCreationDate.py
+- Python 3.11 or newer
+- FFmpeg on your `PATH` for `ytVideoDownloader.py`; it is required for audio conversion and video merging
+- On macOS, `SetFile` for changing PDF creation dates (it is provided by Xcode Command Line Tools)
 
-A utility to modify file creation dates based on dates encoded in filenames.
-
-#### Features
-
-- Updates creation dates of PDF files based on dates in their filenames
-- Supports multiple filename patterns:
-  - `YYYYMMDD_*.pdf` (e.g., 20230415_document.pdf)
-  - `YYYY-MM-DD_*.pdf` (e.g., 2023-04-15_document.pdf)
-  - `*_YYYYMMDD.pdf` (e.g., invoice_20230415.pdf)
-- Cross-platform support (Windows, macOS, Linux)
-- Recursive directory processing
-- Progress bars for better user experience
-- Detailed logging of operations
-- Dry-run mode to preview changes
-- Command-line interface with various options
-
-#### Usage
-
-```console
-usage: editCreationDate.py [-h] [-r] [-m] [-d] [-v] [folders [folders ...]]
-
-Update PDF file creation dates based on filename patterns
-
-positional arguments:
-  folders              Folders to process (optional, can input during execution)
-
-options:
-  -h, --help           show this help message and exit
-  -r, --recursive      Process subfolders recursively
-  -m, --modified-date  Also update modified date
-  -d, --dry-run        Don't make changes, just preview
-  -v, --verbose        Enable verbose logging
-```
-
-Examples:
+Install FFmpeg with your platform package manager, for example:
 
 ```bash
-# Process a specific folder
-python editCreationDate.py /path/to/folder
+# macOS (Homebrew)
+brew install ffmpeg
 
-# Process multiple folders recursively
-python editCreationDate.py -r /path/to/folder1 /path/to/folder2
+# Debian/Ubuntu
+sudo apt install ffmpeg
 
-# Preview changes without modifying files
-python editCreationDate.py -d /path/to/folder
-
-# Run interactively
-python editCreationDate.py
+# Windows (Chocolatey)
+choco install ffmpeg
 ```
 
-### 2. pdfRename.py
+## Setup
 
-Renames PDF files by extracting dates and titles from the PDF content.
-
-#### Features
-
-- Extracts dates and titles from PDF text content
-- Renames files to a standardized format (YYYYMMDD_title.pdf)
-- Handles various date formats using dateparser
-- Can process entire folders of PDF files
-
-#### Usage
-
-Run the script in your terminal. You will be prompted to enter a folder path. The script processes all PDF files in that folder, extracting dates and titles to rename them in a structured format.
-
-### 3. ytVideoDownloader.py
-
-A simple YouTube video downloader.
-
-#### Features
-
-- Downloads YouTube videos at the highest available resolution
-- Simple command-line interface
-- Progress tracking during download
-
-#### Usage
-
-Run the script in your terminal. When prompted, enter a YouTube link, and the script will download the video at the highest available resolution.
-
-## Installation
-
-### Prerequisites
-
-- Python 3.6 or higher
-
-### Required Packages
-
-Different tools require different packages:
-
-#### For editCreationDate.py
+Create and activate a virtual environment, then install the pinned development dependencies. This installs the runtime dependencies as well as the test and lint tools.
 
 ```bash
-pip install tqdm
-# For Windows only:
-pip install pywin32
+python3.11 -m venv .venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 ```
 
-#### For pdfRename.py
+`requirements.txt` pins the runtime packages: `dateparser`, `pdfplumber`, `tqdm`, and `yt-dlp[default]`. `pywin32` is installed only on Windows. `requirements-dev.txt` additionally pins `pytest` and `ruff`.
+
+## Tools
+
+Run every command from the repository root after activating `.venv`.
+
+### YouTube downloader
+
+`projects/ytVideoDownloader.py` downloads YouTube audio or video with `yt-dlp`. Files are written to the current directory unless `--output` is supplied. Existing files are not overwritten.
 
 ```bash
-pip install pdfplumber dateparser
+# Display the available options
+python projects/ytVideoDownloader.py --help
+
+# Download a video directly, limiting the height to 1080 pixels
+python projects/ytVideoDownloader.py --resolution 1080 --output downloads \
+  'https://www.youtube.com/watch?v=VIDEO_ID'
+
+# Extract MP3 audio from one URL
+python projects/ytVideoDownloader.py --audio --audio-format mp3 --audio-quality 192 \
+  --single --output downloads 'https://www.youtube.com/watch?v=VIDEO_ID'
+
+# Start the interactive URL and media-type prompts
+python projects/ytVideoDownloader.py
 ```
 
-#### For ytVideoDownloader.py
+Pass multiple URLs to process several videos or playlists. Use `--single` to download only one item from a playlist, and `--verbose` to show `yt-dlp` debug output.
+
+Only download media when you have the necessary rights and comply with the service's terms, copyright law, and local regulations.
+
+### PDF renamer
+
+`projects/pdfRename.py` extracts dates and titles from PDF text, then renames files. By default it uses `projects/components/keywords.txt` and creates names in the `{date}_{title}` format.
 
 ```bash
-pip install pytube
+# Preview non-recursive changes before applying them
+python projects/pdfRename.py --dry-run /path/to/pdfs
+
+# Rename PDFs recursively with a custom keyword list and filename format
+python projects/pdfRename.py --recursive --keywords /path/to/keywords.txt \
+  --format '{title}_{date}' /path/to/pdfs
+
+# Start interactive folder selection; type "exit" to quit
+python projects/pdfRename.py
 ```
 
-### All Dependencies
+Use `--verbose` for additional logging. The `--format` value accepts only `{date}` and `{title}` fields.
 
-To install all dependencies:
+### PDF date editor
+
+`projects/editCreationDate.py` reads a date from PDF filenames and updates file timestamps. Supported filename patterns include `YYYYMMDD_name.pdf`, `YYYY-MM-DD_name.pdf`, and `name_YYYYMMDD.pdf`.
 
 ```bash
-pip install tqdm pywin32 pdfplumber dateparser pytube
+# Preview timestamp changes
+python projects/editCreationDate.py --dry-run /path/to/pdfs
+
+# Process folders recursively and also update modification dates
+python projects/editCreationDate.py --recursive --modified-date \
+  /path/to/pdfs /path/to/more-pdfs
+
+# Start interactive folder selection; type "exit" to quit
+python projects/editCreationDate.py
 ```
 
-## Author
+On macOS, the tool uses `SetFile` to update creation time and can additionally update modification time with `--modified-date`. On Windows it requires the platform-specific `pywin32` dependency. Linux filesystems generally cannot set creation time; on Linux, use `--modified-date` to update modification time instead. The tool does not support other operating systems.
 
-These scripts were created by Heiko Goretzki.
+## Verification and maintenance
+
+Run the command-line help checks, tests, and linter from the activated environment:
+
+```bash
+python projects/ytVideoDownloader.py --help
+python projects/pdfRename.py --help
+python projects/editCreationDate.py --help
+python -m pytest
+python -m ruff check .
+```
+
+Dependencies are intentionally pinned for repeatable installs. To update one, change its pinned version in `requirements.txt` or `requirements-dev.txt`, reinstall with `python -m pip install -r requirements-dev.txt`, and run the verification commands above before committing the updated lock-style files.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE.md file for details.
+This repository is licensed under the [MIT License](LICENSE.md). The repository license applies to this project only; third-party dependencies retain their own licenses.
