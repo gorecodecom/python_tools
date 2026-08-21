@@ -23,12 +23,25 @@ choco install ffmpeg
 
 ## Setup
 
-Create and activate a virtual environment, then install the pinned development dependencies. This installs the runtime dependencies as well as the test and lint tools.
+Create and activate a virtual environment for your platform. Then run the shared installation commands to install the pinned runtime, test, and lint dependencies.
+
+### macOS and Linux
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-# Windows PowerShell: .venv\\Scripts\\Activate.ps1
+```
+
+### Windows PowerShell
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+### Install pinned dependencies
+
+```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
 ```
