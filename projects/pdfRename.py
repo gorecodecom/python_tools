@@ -1,10 +1,17 @@
+import argparse
+import logging
 import os
 import re
-import pdfplumber
-import dateparser
-import logging
-import argparse
 from pathlib import Path
+from string import Formatter
+
+import dateparser
+import pdfplumber
+
+DEFAULT_KEYWORDS_FILE = Path(__file__).resolve().parent / "components" / "keywords.txt"
+MAX_FILENAME_LENGTH = 240
+ALLOWED_FORMAT_FIELDS = {"date", "title"}
+LOGGER = logging.getLogger(__name__)
 
 
 def extract_date(text, filename=None):
@@ -71,8 +78,7 @@ def load_keywords_from_file(filename):
         return []
 
 
-def extract_title(text, keywords_file):
-    keywords = load_keywords_from_file(keywords_file)
+def extract_title(text, keywords):
     if not keywords:
         return "Unknown"
     
@@ -114,59 +120,84 @@ def extract_title(text, keywords_file):
     return "Unknown"
 
 
-def rename_pdf(pdf_path, new_name, dry_run=False):
-    folder = os.path.dirname(pdf_path)
-    new_pdf_path = os.path.join(folder, new_name)
+def sanitize_filename(value):
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(value))
+    sanitized = sanitized.replace('..', '').strip().strip('.').lstrip('_')
+    return sanitized or 'untitled'
+
+
+def format_pdf_name(date, title, template):
+    for _, field_name, format_spec, conversion in Formatter().parse(template):
+        if field_name is not None and (
+            field_name not in ALLOWED_FORMAT_FIELDS or format_spec or conversion
+        ):
+            raise ValueError(f"Unsupported format field: {field_name}")
+
+    filename = sanitize_filename(
+        template.format(date=sanitize_filename(date), title=sanitize_filename(title))
+    )
+    if not filename.lower().endswith('.pdf'):
+        filename += '.pdf'
+
+    if len(filename) > MAX_FILENAME_LENGTH:
+        filename = f"{filename[: MAX_FILENAME_LENGTH - 4].rstrip(' .')}.pdf"
+
+    return filename
+
+
+def rename_pdf(source, name, dry_run=False):
+    source_path = Path(source)
+    source_directory = source_path.parent.resolve()
+    target_path = source_directory / sanitize_filename(name)
+
+    try:
+        target_path.resolve().relative_to(source_directory)
+    except ValueError:
+        LOGGER.error(f"Refusing to rename outside source directory: {source_path}")
+        return False, source_path
     
     # Check if target file already exists
     counter = 1
-    original_new_pdf_path = new_pdf_path
-    while os.path.exists(new_pdf_path) and os.path.abspath(pdf_path) != os.path.abspath(new_pdf_path):
-        name_parts = os.path.splitext(original_new_pdf_path)
-        new_pdf_path = f"{name_parts[0]}_{counter}{name_parts[1]}"
+    original_target_path = target_path
+    while target_path.exists() and source_path.resolve() != target_path.resolve():
+        target_path = original_target_path.with_stem(f"{original_target_path.stem}_{counter}")
         counter += 1
     
     if dry_run:
-        logging.info(f"Would rename: {pdf_path} -> {new_pdf_path}")
-        return new_pdf_path
+        LOGGER.info(f"Would rename: {source_path} -> {target_path}")
+        return True, target_path
     
     try:
-        os.rename(pdf_path, new_pdf_path)
-        logging.info(f"Renamed: {pdf_path} -> {new_pdf_path}")
-        return new_pdf_path
+        source_path.rename(target_path)
+        LOGGER.info(f"Renamed: {source_path} -> {target_path}")
+        return True, target_path
     except PermissionError:
-        logging.error(f"Permission denied when renaming {pdf_path}")
-        return pdf_path
-    except Exception as e:
-        logging.error(f"Error renaming {pdf_path}: {e}")
-        return pdf_path
+        LOGGER.error(f"Permission denied when renaming {source_path}")
+        return False, source_path
+    except OSError as error:
+        LOGGER.error(f"Error renaming {source_path}: {error}")
+        return False, source_path
 
 
-def process_pdf(pdf_path, keywords_file, name_format="{date}_{title}", dry_run=False):
+def process_pdf(pdf_path, keywords, name_format="{date}_{title}", dry_run=False):
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            text = ""
-            for page in pdf.pages[:3]:  # Only process first 3 pages for efficiency
-                text += page.extract_text() or ""
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages[:3])
             
             # Pass filename to extract_date as fallback
             date = extract_date(text, pdf_path)
-            title = extract_title(text, keywords_file)
+            title = extract_title(text, keywords)
             
         if date:
-            # Format the filename according to the provided format
             date_str = date.strftime('%Y%m%d')
-            new_pdf_name = name_format.format(date=date_str, title=title)
-            if not new_pdf_name.endswith('.pdf'):
-                new_pdf_name += '.pdf'
+            new_pdf_name = format_pdf_name(date_str, title, name_format)
                 
             # Skip if the file already has the correct name format
             if os.path.basename(pdf_path) == new_pdf_name:
                 logging.info(f"File already has correct name: {pdf_path}")
                 return True, pdf_path
                 
-            new_pdf_path = rename_pdf(pdf_path, new_pdf_name, dry_run)
-            return True, new_pdf_path
+            return rename_pdf(pdf_path, new_pdf_name, dry_run)
         else:
             logging.warning(f"No date found in {pdf_path}")
             return False, pdf_path
@@ -183,9 +214,11 @@ def list_pdf_files(folder, recursive=False):
         return []
         
     if recursive:
-        return [str(pdf) for pdf in folder_path.glob('**/*.pdf')]
+        files = folder_path.rglob('*')
     else:
-        return [str(pdf) for pdf in folder_path.glob('*.pdf')]
+        files = folder_path.iterdir()
+
+    return [str(pdf) for pdf in files if pdf.is_file() and pdf.suffix.lower() == '.pdf']
 
 
 def setup_logging(verbose=False):
@@ -196,11 +229,11 @@ def setup_logging(verbose=False):
     )
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Rename PDF files based on content')
     parser.add_argument('folder', nargs='?', help='Folder containing PDF files')
-    parser.add_argument('-k', '--keywords', default='projects/components/keywords.txt', 
-                        help='Path to keywords file (default: projects/components/keywords.txt)')
+    parser.add_argument('-k', '--keywords', default=str(DEFAULT_KEYWORDS_FILE),
+                        help='Path to keywords file')
     parser.add_argument('-r', '--recursive', action='store_true', 
                         help='Process folders recursively')
     parser.add_argument('-f', '--format', default='{date}_{title}',
@@ -209,7 +242,7 @@ def parse_args():
                         help='Preview changes without renaming files')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Enable verbose logging')
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main():
@@ -238,13 +271,14 @@ def main():
             logging.warning(f"No PDF files found in {folder_path}")
         else:
             logging.info(f"Found {len(pdf_files)} PDF files")
+            keywords = load_keywords_from_file(args.keywords)
             
             success_count = 0
             for i, pdf_path in enumerate(pdf_files, 1):
                 logging.info(f"Processing file {i}/{len(pdf_files)}: {pdf_path}")
                 success, _ = process_pdf(
                     pdf_path, 
-                    args.keywords,
+                    keywords,
                     args.format,
                     args.dry_run
                 )

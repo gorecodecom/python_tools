@@ -1,0 +1,81 @@
+"""Regression tests for safe, predictable PDF renaming."""
+
+from pathlib import Path
+
+import pytest
+
+from projects import pdfRename as pdf_rename
+
+
+def test_list_pdf_files_discovers_uppercase_pdf_extension(tmp_path: Path) -> None:
+    """Uppercase PDF extensions must be included in a non-recursive scan."""
+    uppercase_pdf = tmp_path / "statement.PDF"
+    uppercase_pdf.touch()
+
+    assert pdf_rename.list_pdf_files(tmp_path) == [str(uppercase_pdf)]
+
+
+def test_parse_args_uses_script_relative_default_keywords_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Changing the working directory must not change the default keyword source."""
+    monkeypatch.chdir(tmp_path)
+
+    args = pdf_rename.parse_args([str(tmp_path)])
+
+    assert Path(args.keywords) == pdf_rename.DEFAULT_KEYWORDS_FILE
+
+
+def test_sanitize_filename_removes_cross_platform_invalid_characters() -> None:
+    """Windows-invalid and control characters must not reach generated names."""
+
+    assert pdf_rename.sanitize_filename('Report<>:"/\\|?*\x00') == "Report__________"
+
+
+def test_format_pdf_name_neutralizes_path_traversal_in_title() -> None:
+    """A title must not be able to turn a generated name into a relative path."""
+
+    assert (
+        pdf_rename.format_pdf_name("20260131", "../Annual/Report", "{date}_{title}")
+        == "20260131_Annual_Report.pdf"
+    )
+
+
+def test_format_pdf_name_rejects_unknown_format_fields() -> None:
+    """Only the documented date and title format fields are accepted."""
+
+    with pytest.raises(ValueError, match="Unsupported format field"):
+        pdf_rename.format_pdf_name("20260131", "Report", "{date}_{category}")
+
+
+def test_rename_pdf_appends_a_numeric_suffix_for_existing_target(tmp_path: Path) -> None:
+    """An existing destination must be preserved by choosing the next suffix."""
+    source = tmp_path / "incoming.pdf"
+    source.touch()
+    (tmp_path / "20260131_Report.pdf").touch()
+
+    success, target = pdf_rename.rename_pdf(source, "20260131_Report.pdf")
+
+    assert success is True
+    assert target == tmp_path / "20260131_Report_1.pdf"
+    assert not source.exists()
+    assert target.exists()
+
+
+def test_rename_pdf_returns_false_when_filesystem_denies_rename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A permission failure must not be reported as a successful rename."""
+    source = tmp_path / "incoming.pdf"
+    source.touch()
+
+    def deny_rename(self: Path, _target: Path) -> Path:
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(Path, "rename", deny_rename)
+
+    success, result_path = pdf_rename.rename_pdf(source, "20260131_Report.pdf")
+
+    assert success is False
+    assert result_path == source
+    assert source.exists()
