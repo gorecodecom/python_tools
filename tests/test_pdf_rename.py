@@ -1,5 +1,6 @@
 """Regression tests for safe, predictable PDF renaming."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,37 @@ def test_rename_pdf_appends_a_numeric_suffix_for_existing_target(tmp_path: Path)
     assert target.exists()
 
 
+def test_rename_pdf_preserves_a_dangling_destination_entry(tmp_path: Path) -> None:
+    """A dangling entry must force a suffix instead of being replaced by a rename."""
+    source = tmp_path / "incoming.pdf"
+    source.write_text("source document", encoding="utf-8")
+    destination = tmp_path / "20260131_Report.pdf"
+    destination.symlink_to("missing.pdf")
+
+    success, target = pdf_rename.rename_pdf(source, destination.name)
+
+    assert success is True
+    assert target == tmp_path / "20260131_Report_1.pdf"
+    assert target.read_text(encoding="utf-8") == "source document"
+    assert destination.is_symlink()
+    assert destination.readlink() == Path("missing.pdf")
+
+
+def test_rename_pdf_keeps_multibyte_collision_names_within_byte_limit(tmp_path: Path) -> None:
+    """Collision suffixes must preserve the byte limit without splitting Unicode text."""
+    source = tmp_path / "incoming.pdf"
+    source.touch()
+    name = pdf_rename.format_pdf_name("20260131", "ä" * 120, "{date}_{title}")
+    assert len(name.encode("utf-8")) <= pdf_rename.MAX_FILENAME_LENGTH
+    (tmp_path / name).touch()
+
+    success, target = pdf_rename.rename_pdf(source, name)
+
+    assert success is True
+    assert target.name == f"20260131_{'ä' * 112}_1.pdf"
+    assert len(target.name.encode("utf-8")) <= pdf_rename.MAX_FILENAME_LENGTH
+
+
 def test_rename_pdf_returns_false_when_filesystem_denies_rename(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -69,10 +101,10 @@ def test_rename_pdf_returns_false_when_filesystem_denies_rename(
     source = tmp_path / "incoming.pdf"
     source.touch()
 
-    def deny_rename(self: Path, _target: Path) -> Path:
+    def deny_link(_source: Path, _target: Path, *, follow_symlinks: bool) -> None:
         raise PermissionError("permission denied")
 
-    monkeypatch.setattr(Path, "rename", deny_rename)
+    monkeypatch.setattr(os, "link", deny_link)
 
     success, result_path = pdf_rename.rename_pdf(source, "20260131_Report.pdf")
 

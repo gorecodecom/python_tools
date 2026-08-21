@@ -126,6 +126,22 @@ def sanitize_filename(value):
     return sanitized or 'untitled'
 
 
+def _truncate_utf8(value, maximum_bytes):
+    encoded = bytearray()
+    for character in value:
+        character_bytes = character.encode("utf-8")
+        if len(encoded) + len(character_bytes) > maximum_bytes:
+            break
+        encoded.extend(character_bytes)
+    return encoded.decode("utf-8")
+
+
+def _build_filename(stem, extension, counter=None):
+    collision_suffix = f"_{counter}" if counter is not None else ""
+    reserved_bytes = len(f"{collision_suffix}{extension}".encode())
+    return f"{_truncate_utf8(stem, MAX_FILENAME_LENGTH - reserved_bytes)}{collision_suffix}{extension}"
+
+
 def format_pdf_name(date, title, template):
     for _, field_name, format_spec, conversion in Formatter().parse(template):
         if field_name is not None and (
@@ -139,16 +155,15 @@ def format_pdf_name(date, title, template):
     if not filename.lower().endswith('.pdf'):
         filename += '.pdf'
 
-    if len(filename) > MAX_FILENAME_LENGTH:
-        filename = f"{filename[: MAX_FILENAME_LENGTH - 4].rstrip(' .')}.pdf"
-
-    return filename
+    filename_path = Path(filename)
+    return _build_filename(filename_path.stem, filename_path.suffix)
 
 
 def rename_pdf(source, name, dry_run=False):
     source_path = Path(source)
     source_directory = source_path.parent.resolve()
-    target_path = source_directory / sanitize_filename(name)
+    name_path = Path(sanitize_filename(name))
+    target_path = source_directory / _build_filename(name_path.stem, name_path.suffix)
 
     try:
         target_path.resolve().relative_to(source_directory)
@@ -156,27 +171,44 @@ def rename_pdf(source, name, dry_run=False):
         LOGGER.error(f"Refusing to rename outside source directory: {source_path}")
         return False, source_path
     
-    # Check if target file already exists
-    counter = 1
-    original_target_path = target_path
-    while target_path.exists() and source_path.resolve() != target_path.resolve():
-        target_path = original_target_path.with_stem(f"{original_target_path.stem}_{counter}")
-        counter += 1
+    if source_path.resolve() == target_path.resolve():
+        return True, source_path
     
     if dry_run:
+        counter = 1
+        while os.path.lexists(target_path):
+            target_path = source_directory / _build_filename(
+                name_path.stem, name_path.suffix, counter
+            )
+            counter += 1
         LOGGER.info(f"Would rename: {source_path} -> {target_path}")
         return True, target_path
     
-    try:
-        source_path.rename(target_path)
+    counter = 1
+    while True:
+        try:
+            os.link(source_path, target_path, follow_symlinks=False)
+        except FileExistsError:
+            target_path = source_directory / _build_filename(
+                name_path.stem, name_path.suffix, counter
+            )
+            counter += 1
+            continue
+        except PermissionError:
+            LOGGER.error(f"Permission denied when renaming {source_path}")
+            return False, source_path
+        except OSError as error:
+            LOGGER.error(f"Error renaming {source_path}: {error}")
+            return False, source_path
+
+        try:
+            source_path.unlink()
+        except OSError as error:
+            LOGGER.error(f"Could not remove source after linking {source_path}: {error}")
+            return False, source_path
+
         LOGGER.info(f"Renamed: {source_path} -> {target_path}")
         return True, target_path
-    except PermissionError:
-        LOGGER.error(f"Permission denied when renaming {source_path}")
-        return False, source_path
-    except OSError as error:
-        LOGGER.error(f"Error renaming {source_path}: {error}")
-        return False, source_path
 
 
 def process_pdf(pdf_path, keywords, name_format="{date}_{title}", dry_run=False):
