@@ -55,6 +55,20 @@ def _set_modified_date(path: Path, date: datetime.datetime) -> None:
     os.utime(path, ns=(access_time_ns, modified_time_ns))
 
 
+def _supports_date_update(system_name: str, modify_modified_date: bool) -> bool:
+    """Return whether the platform can perform the requested timestamp update."""
+    if system_name == "Linux" and not modify_modified_date:
+        logger.error(
+            "Linux does not support setting file creation time; "
+            "use --modified-date to update mtime instead"
+        )
+        return False
+    if system_name not in {"Darwin", "Windows", "Linux"}:
+        logger.error("Unsupported operating system: %s", system_name)
+        return False
+    return True
+
+
 def set_file_dates(
     path: str | Path,
     date: datetime.datetime,
@@ -64,6 +78,8 @@ def set_file_dates(
     """Set supported file timestamps for the selected operating system."""
     file_path = Path(path)
     system_name = system or platform.system()
+    if not _supports_date_update(system_name, modify_modified_date):
+        return False
 
     try:
         if system_name == "Darwin":
@@ -96,19 +112,9 @@ def set_file_dates(
                 handle.Close()
             return True
 
-        if system_name == "Linux":
-            if not modify_modified_date:
-                logger.error(
-                    "Linux does not support setting file creation time; "
-                    "use --modified-date to update mtime instead"
-                )
-                return False
-            _set_modified_date(file_path, date)
-            return True
-
-        logger.error("Unsupported operating system: %s", system_name)
-        return False
-    except (ImportError, OSError, subprocess.SubprocessError) as error:
+        _set_modified_date(file_path, date)
+        return True
+    except (ImportError, OSError, ValueError, OverflowError, subprocess.SubprocessError) as error:
         logger.error("Error updating %s: %s", file_path.name, error)
         return False
 
@@ -125,7 +131,10 @@ def update_file_creation_date(
     if date is None:
         return False
 
+    system_name = system or platform.system()
     if dry_run:
+        if not _supports_date_update(system_name, modify_modified_date):
+            return False
         logger.info("Would update dates of %s to %s", file_path.name, date.strftime("%Y-%m-%d"))
         return True
 
@@ -133,7 +142,7 @@ def update_file_creation_date(
         file_path,
         date,
         modify_modified_date=modify_modified_date,
-        system=system,
+        system=system_name,
     )
     if success:
         logger.debug("Updated dates for %s to %s", file_path.name, date.strftime("%Y-%m-%d"))
@@ -223,7 +232,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print("Type 'exit' to quit the program.\n")
         while True:
-            folder_path = input("Folder path (or 'exit' to quit): ")
+            try:
+                folder_path = input("Folder path (or 'exit' to quit): ")
+            except EOFError:
+                print()
+                break
             if folder_path.lower() == "exit":
                 break
             if folder_path.strip():

@@ -104,6 +104,23 @@ def test_set_file_dates_on_linux_updates_requested_mtime_and_preserves_atime(
     assert pdf.stat().st_mtime_ns == int(target.timestamp() * 1_000_000_000)
 
 
+def test_update_file_creation_date_linux_dry_run_rejects_creation_only_request(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A Linux dry-run must not preview unsupported creation-time behavior."""
+    pdf = tmp_path / "20260821_report.pdf"
+    pdf.touch()
+    original_atime_ns = 1_700_000_000_123_456_789
+    original_mtime_ns = 1_700_000_100_987_654_321
+    os.utime(pdf, ns=(original_atime_ns, original_mtime_ns))
+    monkeypatch.setattr(date_editor.platform, "system", lambda: "Linux")
+
+    assert date_editor.update_file_creation_date(pdf, dry_run=True) is False
+    assert "Linux does not support setting file creation time" in caplog.text
+    assert pdf.stat().st_atime_ns == original_atime_ns
+    assert pdf.stat().st_mtime_ns == original_mtime_ns
+
+
 @pytest.mark.parametrize(
     ("modify_modified_date", "expected_last_write"),
     [(False, None), (True, "win-time")],
@@ -177,7 +194,7 @@ def test_process_folder_discovers_uppercase_pdf_extension(tmp_path: Path) -> Non
     """PDF discovery must not depend on extension casing."""
     (tmp_path / "20260821_report.PDF").touch()
 
-    assert date_editor.process_folder(tmp_path, dry_run=True) == (1, 0)
+    assert date_editor.process_folder(tmp_path, modify_modified_date=True, dry_run=True) == (1, 0)
 
 
 def test_process_folder_forwards_modified_date_request(
@@ -194,6 +211,37 @@ def test_process_folder_forwards_modified_date_request(
     assert date_editor.process_folder(tmp_path, modify_modified_date=True) == (1, 0)
     assert pdf.stat().st_atime_ns == original_atime_ns
     assert pdf.stat().st_mtime_ns == int(target.timestamp() * 1_000_000_000)
+
+
+@pytest.mark.parametrize("error_type", [ValueError, OverflowError])
+def test_process_folder_counts_host_timestamp_conversion_failure_and_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    error_type: type[Exception],
+) -> None:
+    """A host timestamp conversion failure must not abort remaining files."""
+    boundary_pdf = tmp_path / "19000101_boundary.pdf"
+    valid_pdf = tmp_path / "20260821_valid.pdf"
+    boundary_pdf.touch()
+    valid_pdf.touch()
+    original_utime = os.utime
+
+    def reject_boundary_date(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if Path(path).name == boundary_pdf.name:
+            raise error_type("host timestamp is out of range")
+        original_utime(path, *args, **kwargs)
+
+    monkeypatch.setattr(date_editor.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(date_editor.os, "utime", reject_boundary_date)
+
+    assert date_editor.process_folder(tmp_path, modify_modified_date=True) == (1, 1)
+    assert valid_pdf.stat().st_mtime_ns == int(
+        datetime.datetime(2026, 8, 21).timestamp() * 1_000_000_000
+    )
 
 
 @pytest.mark.parametrize("kind", ["missing", "file"])
@@ -219,7 +267,24 @@ def test_main_with_positional_folder_does_not_prompt(
 
     monkeypatch.setattr("builtins.input", fail_if_prompted)
 
-    assert date_editor.main(["--dry-run", str(tmp_path)]) == 0
+    assert date_editor.main(["--modified-date", "--dry-run", str(tmp_path)]) == 0
+
+
+def test_main_linux_creation_only_dry_run_counts_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unsupported Linux dry-run must produce a non-zero CLI result."""
+    (tmp_path / "20260821_report.pdf").touch()
+    monkeypatch.setattr(date_editor.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: pytest.fail("input() must not be called with positional folders"),
+    )
+
+    assert date_editor.main(["--dry-run", str(tmp_path)]) == 1
+    assert "Failed: 1" in capsys.readouterr().out
 
 
 def test_main_returns_nonzero_when_a_folder_fails(
@@ -233,3 +298,25 @@ def test_main_returns_nonzero_when_a_folder_fails(
     )
 
     assert date_editor.main([str(missing)]) == 1
+
+
+def test_main_treats_interactive_eof_as_normal_end_and_preserves_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """EOF after interactive work must return the aggregate processing status."""
+    missing = tmp_path / "missing"
+    prompt_count = 0
+
+    def provide_folder_then_eof(_prompt: str) -> str:
+        nonlocal prompt_count
+        prompt_count += 1
+        if prompt_count == 1:
+            return str(missing)
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", provide_folder_then_eof)
+
+    assert date_editor.main([]) == 1
+    assert "Summary: Total files processed: 0, Failed: 1" in capsys.readouterr().out
