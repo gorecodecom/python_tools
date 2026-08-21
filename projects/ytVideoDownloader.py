@@ -67,7 +67,7 @@ def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
         options["format"] = "bestvideo+bestaudio/best"
     else:
         options["format"] = (
-            f"bestvideo[height<={request.resolution}]+bestaudio/best[height<={request.resolution}]/best"
+            f"bestvideo[height<={request.resolution}]+bestaudio/best[height<={request.resolution}]"
         )
     return options
 
@@ -115,7 +115,9 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="Directory for downloaded files (default: current directory).",
     )
     parser.add_argument(
-        "--single", action="store_true", help="Download only one video, not a playlist."
+        "--single",
+        action="store_true",
+        help="Ignore playlist context when a URL also identifies a video.",
     )
     parser.add_argument("--verbose", action="store_true", help="Show yt-dlp debug output.")
     return parser

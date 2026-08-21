@@ -251,4 +251,3 @@ Review the complete working diff against this plan for correctness, security, er
 Run: `git status --short --branch` and `git log --oneline --decorate origin/main..HEAD`.
 
 Expected: the branch is not pushed, planned commits are local, and only intentional generated artifacts are ignored.
-

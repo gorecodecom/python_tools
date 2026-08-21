@@ -76,6 +76,10 @@ def set_file_dates(
 ) -> bool:
     """Set supported file timestamps for the selected operating system."""
     file_path = Path(path)
+    if file_path.is_symlink():
+        logger.error("Refusing to update symbolic link: %s", file_path)
+        return False
+
     system_name = system or platform.system()
     if not _supports_date_update(system_name, modify_modified_date):
         return False
@@ -126,6 +130,10 @@ def update_file_creation_date(
 ) -> bool:
     """Update a file's supported timestamps based on its filename."""
     file_path = Path(filepath)
+    if file_path.is_symlink():
+        logger.error("Refusing to process symbolic link: %s", file_path)
+        return False
+
     date = extract_date_from_filename(file_path)
     if date is None:
         return False
@@ -164,7 +172,9 @@ def process_folder(
     try:
         paths = folder.rglob("*") if recursive else folder.iterdir()
         pdf_files = sorted(
-            path for path in paths if path.is_file() and path.suffix.lower() == ".pdf"
+            path
+            for path in paths
+            if path.suffix.lower() == ".pdf" and (path.is_symlink() or path.is_file())
         )
     except OSError as error:
         logger.error("Error accessing folder %s: %s", folder_path, error)
@@ -177,6 +187,11 @@ def process_folder(
     success_count = 0
     fail_count = 0
     for pdf_file in tqdm(pdf_files, desc=f"Processing {folder_path}"):
+        if pdf_file.is_symlink():
+            logger.error("Refusing to process symbolic link: %s", pdf_file)
+            fail_count += 1
+            continue
+
         success = update_file_creation_date(
             pdf_file,
             dry_run=dry_run,

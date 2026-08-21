@@ -38,4 +38,3 @@ Positional folders run non-interactively. Interactive mode is used only when no 
 ## Quality and Documentation
 
 Pytest regression tests cover the reproduced bugs and core pure functions. Ruff supplies linting and formatting with a Python 3.11 target. The README documents setup, FFmpeg, every CLI, platform limitations, update commands, test commands, responsible download usage, and the MIT license. The existing MIT license text remains authoritative.
-

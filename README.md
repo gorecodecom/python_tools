@@ -72,7 +72,7 @@ python projects/ytVideoDownloader.py --audio --audio-format mp3 --audio-quality 
 python projects/ytVideoDownloader.py
 ```
 
-Pass multiple URLs to process several videos or playlists. Use `--single` to download only one item from a playlist, and `--verbose` to show `yt-dlp` debug output.
+Pass multiple URLs to process several videos or playlists. Use `--single` to ignore playlist context when a URL identifies both a video and a playlist, and `--verbose` to show `yt-dlp` debug output.
 
 Only download media when you have the necessary rights and comply with the service's terms, copyright law, and local regulations.
 

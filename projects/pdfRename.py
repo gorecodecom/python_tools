@@ -11,7 +11,21 @@ import pdfplumber
 DEFAULT_KEYWORDS_FILE = Path(__file__).resolve().parent / "components" / "keywords.txt"
 MAX_FILENAME_LENGTH = 240
 ALLOWED_FORMAT_FIELDS = {"date", "title"}
+WINDOWS_RESERVED_STEMS = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "CONIN$",
+    "CONOUT$",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 LOGGER = logging.getLogger(__name__)
+
+
+class ConfigurationError(Exception):
+    """Raised when required PDF rename inputs cannot be used."""
 
 
 def extract_date(text, filename=None):
@@ -36,9 +50,9 @@ def extract_date(text, filename=None):
     for pattern in patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
-            if isinstance(matches[0], tuple):  # für die ersten drei Muster
+            if isinstance(matches[0], tuple):  # The first three patterns contain groups.
                 return dateparser.parse(matches[0][0], languages=["de"])
-            else:  # für die letzten vier Muster
+            else:  # The remaining patterns return a single string.
                 return dateparser.parse(matches[0], languages=["de"])
 
     # Fallback: Try to extract date from filename
@@ -68,14 +82,20 @@ def extract_date(text, filename=None):
 def load_keywords_from_file(filename):
     try:
         with open(filename, "r", encoding="utf-8") as file:
-            keywords = [line.strip() for line in file]
+            keywords = [keyword for line in file if (keyword := line.strip())]
         return keywords
-    except FileNotFoundError:
-        LOGGER.error("Keywords file not found: %s", filename)
-        return []
+    except FileNotFoundError as error:
+        raise ConfigurationError(f"Keywords file not found: {filename}") from error
     except (OSError, UnicodeError) as error:
-        LOGGER.error("Error loading keywords file: %s", error)
-        return []
+        raise ConfigurationError(f"Error loading keywords file {filename}: {error}") from error
+
+
+def _extract_simple_title(text, keyword):
+    simple_pattern = rf"(?<!\w){re.escape(keyword)}\w*(?!\w)"
+    simple_match = re.search(simple_pattern, text, re.IGNORECASE)
+    if simple_match:
+        return simple_match.group(0).replace(" ", "_")
+    return None
 
 
 def extract_title(text, keywords):
@@ -116,10 +136,9 @@ def extract_title(text, keywords):
             return title
 
         # Fallback to the original simple pattern if the complex one doesn't match
-        simple_pattern = rf"\b{keyword}\w*\b"
-        simple_match = re.search(simple_pattern, text, re.IGNORECASE)
-        if simple_match:
-            return simple_match.group(0).replace(" ", "_")
+        simple_title = _extract_simple_title(text, keyword)
+        if simple_title:
+            return simple_title
 
     return "Unknown"
 
@@ -127,7 +146,10 @@ def extract_title(text, keywords):
 def sanitize_filename(value):
     sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value))
     sanitized = sanitized.replace("..", "").strip().strip(".").lstrip("_")
-    return sanitized or "untitled"
+    sanitized = sanitized or "untitled"
+    if sanitized.split(".", 1)[0].upper() in WINDOWS_RESERVED_STEMS:
+        sanitized = f"_{sanitized}"
+    return sanitized
 
 
 def _truncate_utf8(value, maximum_bytes):
@@ -250,16 +272,18 @@ def process_pdf(pdf_path, keywords, name_format="{date}_{title}", dry_run=False)
 
 def list_pdf_files(folder, recursive=False):
     folder_path = Path(folder)
-    if not folder_path.exists():
-        LOGGER.error("Folder not found: %s", folder)
-        return []
+    if not folder_path.is_dir():
+        raise ConfigurationError(f"Not a directory: {folder}")
 
-    if recursive:
-        files = folder_path.rglob("*")
-    else:
-        files = folder_path.iterdir()
+    try:
+        if recursive:
+            files = folder_path.rglob("*")
+        else:
+            files = folder_path.iterdir()
 
-    return [str(pdf) for pdf in files if pdf.is_file() and pdf.suffix.lower() == ".pdf"]
+        return [str(pdf) for pdf in files if pdf.is_file() and pdf.suffix.lower() == ".pdf"]
+    except OSError as error:
+        raise ConfigurationError(f"Error accessing folder {folder}: {error}") from error
 
 
 def setup_logging(verbose=False):
@@ -311,14 +335,27 @@ def main():
         print("===============\n")
         folder_path = input("Folder Path: ")
 
+    if folder_path.lower() == "exit":
+        return 0
+
+    try:
+        keywords = load_keywords_from_file(args.keywords)
+    except ConfigurationError as error:
+        LOGGER.error("%s", error)
+        return 2
+
+    processing_failed = False
     while folder_path.lower() != "exit":
-        pdf_files = list_pdf_files(folder_path, args.recursive)
+        try:
+            pdf_files = list_pdf_files(folder_path, args.recursive)
+        except ConfigurationError as error:
+            LOGGER.error("%s", error)
+            return 2
 
         if not pdf_files:
             LOGGER.warning("No PDF files found in %s", folder_path)
         else:
             LOGGER.info("Found %s PDF files", len(pdf_files))
-            keywords = load_keywords_from_file(args.keywords)
 
             success_count = 0
             for i, pdf_path in enumerate(pdf_files, 1):
@@ -328,6 +365,7 @@ def main():
                     success_count += 1
 
             LOGGER.info("Successfully processed %s out of %s files", success_count, len(pdf_files))
+            processing_failed = processing_failed or success_count < len(pdf_files)
 
         # Only ask for new input in interactive mode
         if not args.folder:
@@ -335,7 +373,7 @@ def main():
         else:
             break
 
-    return 0
+    return 1 if processing_failed else 0
 
 
 if __name__ == "__main__":

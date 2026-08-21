@@ -213,6 +213,53 @@ def test_process_folder_forwards_modified_date_request(
     assert pdf.stat().st_mtime_ns == int(target.timestamp() * 1_000_000_000)
 
 
+def test_process_folder_rejects_out_of_tree_pdf_symlink(tmp_path: Path) -> None:
+    """Discovery must count a PDF symlink as a failure without touching its target."""
+    target = tmp_path / "20260821_outside.pdf"
+    target.touch()
+    original_mtime_ns = target.stat().st_mtime_ns
+    folder = tmp_path / "input"
+    folder.mkdir()
+    link = folder / "20260821_link.pdf"
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"symlink creation is unsupported: {error}")
+
+    assert date_editor.process_folder(folder, modify_modified_date=True, dry_run=True) == (0, 1)
+    assert link.is_symlink()
+    assert target.stat().st_mtime_ns == original_mtime_ns
+
+
+def test_set_file_dates_rejects_symlink_at_mutation_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The final timestamp boundary must refuse a symlink before calling os.utime."""
+    target = tmp_path / "20260821_target.pdf"
+    target.touch()
+    link = tmp_path / "20260821_link.pdf"
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"symlink creation is unsupported: {error}")
+
+    monkeypatch.setattr(
+        date_editor.os,
+        "utime",
+        lambda *_args, **_kwargs: pytest.fail("os.utime must not follow a symlink"),
+    )
+
+    assert (
+        date_editor.set_file_dates(
+            link,
+            datetime.datetime(2026, 8, 21),
+            modify_modified_date=True,
+            system="Linux",
+        )
+        is False
+    )
+
+
 @pytest.mark.parametrize("error_type", [ValueError, OverflowError])
 def test_process_folder_counts_host_timestamp_conversion_failure_and_continues(
     monkeypatch: pytest.MonkeyPatch,

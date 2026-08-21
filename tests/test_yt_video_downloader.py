@@ -54,11 +54,11 @@ def test_audio_postprocessor_never_overwrites_existing_converted_files() -> None
     assert options["postprocessors"][0]["nopostoverwrites"] is True
 
 
-def test_1080p_video_request_limits_the_format_height() -> None:
-    """A resolution cap must be present in the yt-dlp format selector."""
+def test_1080p_video_request_has_no_unrestricted_fallback() -> None:
+    """Every video fallback must preserve the requested maximum height."""
     options = downloader.build_ydl_options(make_request(resolution=1080))
 
-    assert options["format"] == "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+    assert options["format"] == "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 
 
 def test_options_allow_playlists_and_never_overwrite_existing_files() -> None:
