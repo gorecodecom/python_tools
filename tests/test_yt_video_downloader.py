@@ -35,6 +35,7 @@ def test_mp3_request_uses_mp3_audio_postprocessor() -> None:
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
+            "nopostoverwrites": True,
         }
     ]
 
@@ -44,6 +45,13 @@ def test_wav_request_uses_wav_audio_postprocessor() -> None:
     options = downloader.build_ydl_options(make_request(audio=True, audio_format="wav"))
 
     assert options["postprocessors"][0]["preferredcodec"] == "wav"
+
+
+def test_audio_postprocessor_never_overwrites_existing_converted_files() -> None:
+    """FFmpeg conversion must preserve an existing final audio file."""
+    options = downloader.build_ydl_options(make_request(audio=True))
+
+    assert options["postprocessors"][0]["nopostoverwrites"] is True
 
 
 def test_1080p_video_request_limits_the_format_height() -> None:

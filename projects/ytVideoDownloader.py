@@ -59,6 +59,7 @@ def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": request.audio_format,
                 "preferredquality": request.audio_quality,
+                "nopostoverwrites": True,
             }
         ]
         return options
