@@ -1,4 +1,3 @@
-# ruff: noqa: N999
 """Download YouTube audio or video with yt-dlp."""
 
 from __future__ import annotations
@@ -86,8 +85,12 @@ def download(request: DownloadRequest) -> int:
 def _argument_parser() -> argparse.ArgumentParser:
     """Create the downloader command-line parser."""
     parser = argparse.ArgumentParser(description="Download YouTube audio or video with yt-dlp.")
-    parser.add_argument("urls", metavar="URL", nargs="*", help="One or more YouTube video or playlist URLs.")
-    parser.add_argument("-a", "--audio", action="store_true", help="Download audio instead of video.")
+    parser.add_argument(
+        "urls", metavar="URL", nargs="*", help="One or more YouTube video or playlist URLs."
+    )
+    parser.add_argument(
+        "-a", "--audio", action="store_true", help="Download audio instead of video."
+    )
     parser.add_argument(
         "--audio-format",
         choices=AUDIO_FORMATS,
@@ -111,7 +114,9 @@ def _argument_parser() -> argparse.ArgumentParser:
         default=Path("."),
         help="Directory for downloaded files (default: current directory).",
     )
-    parser.add_argument("--single", action="store_true", help="Download only one video, not a playlist.")
+    parser.add_argument(
+        "--single", action="store_true", help="Download only one video, not a playlist."
+    )
     parser.add_argument("--verbose", action="store_true", help="Show yt-dlp debug output.")
     return parser
 
@@ -200,7 +205,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if shutil.which("ffmpeg") is None:
-        print("FFmpeg is required for audio conversion and video merging. Install it and try again.", file=sys.stderr)
+        print(
+            "FFmpeg is required for audio conversion and video merging. Install it and try again.",
+            file=sys.stderr,
+        )
         return 1
     return download(request)
 

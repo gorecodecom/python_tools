@@ -147,7 +147,9 @@ def test_download_passes_real_options_to_yt_dlp_without_network(
     assert received["options"] == downloader.build_ydl_options(request)
 
 
-def test_download_returns_nonzero_for_yt_dlp_errors(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_download_returns_nonzero_for_yt_dlp_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Network failures must become a concise, non-zero CLI outcome."""
 
     class FailingYoutubeDL:

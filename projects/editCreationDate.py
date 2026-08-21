@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-# ruff: noqa: N999
 """Update PDF timestamps from dates embedded in their filenames."""
 
 from __future__ import annotations
