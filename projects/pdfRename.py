@@ -148,13 +148,16 @@ def _build_filename(stem, extension, counter=None):
     )
 
 
-def format_pdf_name(date, title, template):
+def _validate_name_format(template):
     for _, field_name, format_spec, conversion in Formatter().parse(template):
         if field_name is not None and (
             field_name not in ALLOWED_FORMAT_FIELDS or format_spec or conversion
         ):
             raise ValueError(f"Unsupported format field: {field_name}")
 
+
+def format_pdf_name(date, title, template):
+    _validate_name_format(template)
     filename = sanitize_filename(
         template.format(date=sanitize_filename(date), title=sanitize_filename(title))
     )
@@ -218,32 +221,31 @@ def rename_pdf(source, name, dry_run=False):
 
 
 def process_pdf(pdf_path, keywords, name_format="{date}_{title}", dry_run=False):
+    # Malformed PDFs can raise backend-specific exceptions outside pdfplumber's public API.
     try:
         with pdfplumber.open(pdf_path) as pdf:
             text = "\n".join(page.extract_text() or "" for page in pdf.pages[:3])
-
-            # Pass filename to extract_date as fallback
-            date = extract_date(text, pdf_path)
-            title = extract_title(text, keywords)
-
-        if date:
-            date_str = date.strftime("%Y%m%d")
-            new_pdf_name = format_pdf_name(date_str, title, name_format)
-
-            # Skip if the file already has the correct name format
-            if os.path.basename(pdf_path) == new_pdf_name:
-                LOGGER.info("File already has correct name: %s", pdf_path)
-                return True, pdf_path
-
-            return rename_pdf(pdf_path, new_pdf_name, dry_run)
-        else:
-            LOGGER.warning("No date found in %s", pdf_path)
-            return False, pdf_path
-
-    # Malformed PDFs can raise backend-specific exceptions outside pdfplumber's public API.
     except Exception as error:  # noqa: BLE001
         LOGGER.error("Error processing %s: %s", pdf_path, error)
         return False, pdf_path
+
+    # Pass filename to extract_date as fallback
+    date = extract_date(text, pdf_path)
+    title = extract_title(text, keywords)
+
+    if date:
+        date_str = date.strftime("%Y%m%d")
+        new_pdf_name = format_pdf_name(date_str, title, name_format)
+
+        # Skip if the file already has the correct name format
+        if os.path.basename(pdf_path) == new_pdf_name:
+            LOGGER.info("File already has correct name: %s", pdf_path)
+            return True, pdf_path
+
+        return rename_pdf(pdf_path, new_pdf_name, dry_run)
+
+    LOGGER.warning("No date found in %s", pdf_path)
+    return False, pdf_path
 
 
 def list_pdf_files(folder, recursive=False):
@@ -288,6 +290,12 @@ def main():
     args = parse_args()
     setup_logging(args.verbose)
 
+    try:
+        _validate_name_format(args.format)
+    except ValueError as error:
+        LOGGER.error("Invalid filename format: %s", error)
+        return 2
+
     print("\nPDF Rename Tool\n")
     print("===============")
 
@@ -327,6 +335,8 @@ def main():
         else:
             break
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

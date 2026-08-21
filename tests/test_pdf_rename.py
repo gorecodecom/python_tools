@@ -1,7 +1,11 @@
 """Regression tests for safe, predictable PDF renaming."""
 
+import logging
 import os
+import sys
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -47,6 +51,38 @@ def test_format_pdf_name_rejects_unknown_format_fields() -> None:
 
     with pytest.raises(ValueError, match="Unsupported format field"):
         pdf_rename.format_pdf_name("20260131", "Report", "{date}_{category}")
+
+
+def test_process_pdf_propagates_unsupported_format_fields(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Invalid caller input must not be mislabeled as a malformed PDF."""
+    source = tmp_path / "20260131_source.pdf"
+    source.touch()
+    parsed_pdf = SimpleNamespace(pages=[])
+    monkeypatch.setattr(pdf_rename.pdfplumber, "open", lambda _path: nullcontext(parsed_pdf))
+
+    with pytest.raises(ValueError, match="Unsupported format field"):
+        pdf_rename.process_pdf(source, [], "{date}_{category}", dry_run=True)
+
+
+def test_main_returns_nonzero_for_unsupported_format(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Invalid CLI formats must produce a concise usage error before file processing."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["pdfRename.py", "--format", "{date}_{category}", str(tmp_path)],
+    )
+
+    with caplog.at_level(logging.ERROR):
+        result = pdf_rename.main()
+
+    assert result == 2
+    assert "Invalid filename format: Unsupported format field: category" in caplog.text
 
 
 def test_rename_pdf_appends_a_numeric_suffix_for_existing_target(tmp_path: Path) -> None:
