@@ -1,0 +1,5 @@
+dateparser==1.4.2
+pdfplumber==0.11.10
+tqdm==4.70.0
+yt-dlp[default]==2026.8.19
+pywin32==312; sys_platform == "win32"
