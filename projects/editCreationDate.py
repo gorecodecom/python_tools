@@ -1,177 +1,238 @@
-import os
-import re
-import datetime
-import platform
+# SPDX-License-Identifier: MIT
+# ruff: noqa: N999
+"""Update PDF timestamps from dates embedded in their filenames."""
+
+from __future__ import annotations
+
 import argparse
+import datetime
 import logging
+import os
+import platform
+import re
+import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+
 from tqdm import tqdm
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("file_date_editor")
+
+DATE_PATTERNS = (
+    re.compile(r"^(\d{4})(\d{2})(\d{2})_.*\.pdf$", re.IGNORECASE),
+    re.compile(r"^(\d{4})-(\d{2})-(\d{2})_.*\.pdf$", re.IGNORECASE),
+    re.compile(r"^.*_(\d{4})(\d{2})(\d{2})\.pdf$", re.IGNORECASE),
 )
-logger = logging.getLogger('file_date_editor')
 
-# Platform-specific imports
-if platform.system() == 'Windows':
+
+def extract_date_from_filename(path: str | Path) -> datetime.datetime | None:
+    """Return a validated date from a supported PDF filename."""
+    filename = Path(path).name
+
+    for pattern in DATE_PATTERNS:
+        match = pattern.match(filename)
+        if match is None:
+            continue
+
+        try:
+            # Filename dates represent local wall-clock time for filesystem tools.
+            return datetime.datetime(  # noqa: DTZ001
+                *(int(part) for part in match.groups())
+            )
+        except ValueError:
+            logger.warning("Invalid date in filename: %s", filename)
+            return None
+
+    logger.info("Filename %s doesn't match any supported pattern", filename)
+    return None
+
+
+def _set_modified_date(path: Path, date: datetime.datetime) -> None:
+    """Set mtime while preserving the file's existing access time."""
+    access_time_ns = path.stat().st_atime_ns
+    modified_time_ns = int(date.timestamp() * 1_000_000_000)
+    os.utime(path, ns=(access_time_ns, modified_time_ns))
+
+
+def set_file_dates(
+    path: str | Path,
+    date: datetime.datetime,
+    modify_modified_date: bool = False,
+    system: str | None = None,
+) -> bool:
+    """Set supported file timestamps for the selected operating system."""
+    file_path = Path(path)
+    system_name = system or platform.system()
+
     try:
-        import win32com.client
-        shell = win32com.client.Dispatch("Shell.Application")
-    except ImportError:
-        logger.error("Required package 'pywin32' is not installed. Please install it using: pip install pywin32")
-        logger.error("After installation, run: python -m pip install --upgrade pywin32")
-        raise SystemExit(1)
-elif platform.system() == 'Darwin':  # macOS
-    import subprocess
+        if system_name == "Darwin":
+            date_string = date.strftime("%m/%d/%Y %H:%M:%S")
+            subprocess.run(["SetFile", "-d", date_string, str(file_path)], check=True)
+            if modify_modified_date:
+                _set_modified_date(file_path, date)
+            return True
 
-def update_file_creation_date(filepath, dry_run=False):
-    """Update a file's creation date based on its filename."""
-    filename = os.path.basename(filepath)
+        if system_name == "Windows":
+            import pywintypes
+            import win32file
 
-    # Support multiple filename patterns
-    patterns = [
-        r'^(\d{4})(\d{2})(\d{2})_.*\.pdf$',  # YYYYMMDD_*.pdf
-        r'^(\d{4})-(\d{2})-(\d{2})_.*\.pdf$',  # YYYY-MM-DD_*.pdf
-        r'^.*_(\d{4})(\d{2})(\d{2})\.pdf$'    # *_YYYYMMDD.pdf
-    ]
-    
-    for pattern in patterns:
-        match = re.match(pattern, filename)
-        if match:
-            year = int(match.group(1))
-            month = int(match.group(2))
-            day = int(match.group(3))
-
-            # Validate date
+            file_time = pywintypes.Time(date)
+            handle = win32file.CreateFile(
+                str(file_path),
+                win32file.GENERIC_WRITE,
+                win32file.FILE_SHARE_READ
+                | win32file.FILE_SHARE_WRITE
+                | win32file.FILE_SHARE_DELETE,
+                None,
+                win32file.OPEN_EXISTING,
+                win32file.FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
             try:
-                date_time = datetime.datetime(year, month, day)
-            except ValueError:
-                logger.warning(f"Invalid date in filename: {filename}")
+                last_write_time = file_time if modify_modified_date else None
+                win32file.SetFileTime(handle, file_time, None, last_write_time)
+            finally:
+                handle.Close()
+            return True
+
+        if system_name == "Linux":
+            if not modify_modified_date:
+                logger.error(
+                    "Linux does not support setting file creation time; "
+                    "use --modified-date to update mtime instead"
+                )
                 return False
+            _set_modified_date(file_path, date)
+            return True
 
-            if dry_run:
-                logger.info(f"Would set creation date of {filename} to {date_time.strftime('%Y-%m-%d')}")
-                return True
+        logger.error("Unsupported operating system: %s", system_name)
+        return False
+    except (ImportError, OSError, subprocess.SubprocessError) as error:
+        logger.error("Error updating %s: %s", file_path.name, error)
+        return False
 
-            try:
-                if platform.system() == 'Windows':
-                    folder = shell.NameSpace(os.path.dirname(filepath))
-                    item = folder.ParseName(os.path.basename(filepath))
-                    if item is not None:
-                        item.ModifyDate = date_time.strftime("%Y-%m-%d %H:%M:%S")
-                elif platform.system() == 'Darwin':  # macOS
-                    # Format date for SetFile command
-                    date_str = date_time.strftime("%m/%d/%Y %H:%M:%S")
-                    subprocess.run(['SetFile', '-d', date_str, str(filepath)], check=True)
-                else:  # Unix/Linux
-                    epoch_time = date_time.timestamp()
-                    os.utime(filepath, (epoch_time, epoch_time))
-                
-                logger.debug(f"Updated creation date for {filename} to {date_time.strftime('%Y-%m-%d')}")
-                return True
-            except Exception as e:
-                logger.error(f"Error updating {filename}: {str(e)}")
-                return False
-                
-    logger.info(f"Filename {filename} doesn't match any supported pattern")
-    return False
 
-def process_folder(folder_path, recursive=False, modify_modified_date=False, dry_run=False):
-    """Process all PDF files in the given folder and optionally its subfolders."""
+def update_file_creation_date(
+    filepath: str | Path,
+    dry_run: bool = False,
+    modify_modified_date: bool = False,
+    system: str | None = None,
+) -> bool:
+    """Update a file's supported timestamps based on its filename."""
+    file_path = Path(filepath)
+    date = extract_date_from_filename(file_path)
+    if date is None:
+        return False
+
+    if dry_run:
+        logger.info("Would update dates of %s to %s", file_path.name, date.strftime("%Y-%m-%d"))
+        return True
+
+    success = set_file_dates(
+        file_path,
+        date,
+        modify_modified_date=modify_modified_date,
+        system=system,
+    )
+    if success:
+        logger.debug("Updated dates for %s to %s", file_path.name, date.strftime("%Y-%m-%d"))
+    return success
+
+
+def process_folder(
+    folder_path: str | Path,
+    recursive: bool = False,
+    modify_modified_date: bool = False,
+    dry_run: bool = False,
+) -> tuple[int, int]:
+    """Process all PDF files in a directory and optionally its subdirectories."""
+    folder = Path(folder_path)
+
+    if not folder.is_dir():
+        logger.error("Not a directory: %s", folder_path)
+        return 0, 1
+
     try:
-        folder = Path(folder_path)
-        if not folder.exists():
-            logger.error(f"Folder not found: {folder_path}")
-            return 0, 0
-            
-        # Get all PDF files
-        if recursive:
-            pdf_files = list(folder.glob('**/*.pdf'))
+        paths = folder.rglob("*") if recursive else folder.iterdir()
+        pdf_files = sorted(
+            path for path in paths if path.is_file() and path.suffix.lower() == ".pdf"
+        )
+    except OSError as error:
+        logger.error("Error accessing folder %s: %s", folder_path, error)
+        return 0, 1
+
+    if not pdf_files:
+        logger.info("No PDF files found in %s", folder_path)
+        return 0, 0
+
+    success_count = 0
+    fail_count = 0
+    for pdf_file in tqdm(pdf_files, desc=f"Processing {folder_path}"):
+        success = update_file_creation_date(
+            pdf_file,
+            dry_run=dry_run,
+            modify_modified_date=modify_modified_date,
+        )
+        if success:
+            success_count += 1
         else:
-            pdf_files = list(folder.glob('*.pdf'))
-            
-        if not pdf_files:
-            logger.info(f"No PDF files found in {folder_path}")
-            return 0, 0
-            
-        success_count = 0
-        fail_count = 0
-        
-        # Use tqdm for progress bar
-        for pdf_file in tqdm(pdf_files, desc=f"Processing {folder_path}"):
-            success = update_file_creation_date(pdf_file, dry_run)
-            if success:
-                success_count += 1
-            else:
-                fail_count += 1
-                
-        return success_count, fail_count
-        
-    except PermissionError:
-        logger.error(f"Permission denied accessing folder: {folder_path}")
-        return 0, 0
-    except Exception as e:
-        logger.error(f"Error processing folder {folder_path}: {str(e)}")
-        return 0, 0
+            fail_count += 1
 
-def main():
-    parser = argparse.ArgumentParser(description='Update PDF file creation dates based on filename patterns')
-    parser.add_argument('folders', nargs='*', help='Folders to process (optional, can input during execution)')
-    parser.add_argument('-r', '--recursive', action='store_true', help='Process subfolders recursively')
-    parser.add_argument('-m', '--modified-date', action='store_true', help='Also update modified date')
-    parser.add_argument('-d', '--dry-run', action='store_true', help="Don't make changes, just preview")
-    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose logging')
-    
-    args = parser.parse_args()
-    
+    return success_count, fail_count
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the date editor and return a shell-compatible exit status."""
+    parser = argparse.ArgumentParser(
+        description="Update PDF file creation dates based on filename patterns"
+    )
+    parser.add_argument("folders", nargs="*", help="Folders to process")
+    parser.add_argument("-r", "--recursive", action="store_true", help="Process subfolders")
+    parser.add_argument(
+        "-m", "--modified-date", action="store_true", help="Also update modified date"
+    )
+    parser.add_argument("-d", "--dry-run", action="store_true", help="Preview without changes")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
-    print("\nEdit Creation Date Tool (Improved)\n")
-    print("===============")
-    print("Type 'exit' to quit the program.")
-    print("===============\n")
-    
+
+    print("\nEdit Creation Date Tool\n")
     if args.dry_run:
         print("*** DRY RUN MODE - No files will be modified ***\n")
-    
+
     total_processed = 0
     total_failed = 0
-    
-    # Process folders from command line arguments
+
+    def process(path: str) -> None:
+        nonlocal total_processed, total_failed
+        success, failed = process_folder(
+            path,
+            recursive=args.recursive,
+            modify_modified_date=args.modified_date,
+            dry_run=args.dry_run,
+        )
+        total_processed += success
+        total_failed += failed
+
     if args.folders:
         for folder in args.folders:
-            success, failed = process_folder(
-                folder, 
-                recursive=args.recursive,
-                modify_modified_date=args.modified_date,
-                dry_run=args.dry_run
-            )
-            total_processed += success
-            total_failed += failed
-    
-    # Interactive mode
-    folder_path = input("Folder path (or 'exit' to quit): ")
-    
-    while folder_path.lower() != 'exit':
-        if folder_path.strip():
-            success, failed = process_folder(
-                folder_path, 
-                recursive=args.recursive,
-                modify_modified_date=args.modified_date,
-                dry_run=args.dry_run
-            )
-            total_processed += success
-            total_failed += failed
-            
-            print(f"Files processed: {success}, Failed: {failed}\n")
-            
-        folder_path = input("Folder path (or 'exit' to quit): ")
-    
+            process(folder)
+    else:
+        print("Type 'exit' to quit the program.\n")
+        while True:
+            folder_path = input("Folder path (or 'exit' to quit): ")
+            if folder_path.lower() == "exit":
+                break
+            if folder_path.strip():
+                process(folder_path)
+
     print(f"\nSummary: Total files processed: {total_processed}, Failed: {total_failed}")
     print("Program completed.")
+    return 1 if total_failed else 0
 
-if __name__ == '__main__':
-    main()
+
+if __name__ == "__main__":
+    raise SystemExit(main())
