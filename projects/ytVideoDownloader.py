@@ -1,167 +1,208 @@
-import os
-import re
-import logging
-from typing import Optional, Tuple
+# ruff: noqa: N999
+"""Download YouTube audio or video with yt-dlp."""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from tqdm import tqdm
-from pytubefix import YouTube, Playlist
-from pytubefix.exceptions import PytubeFixError
-from pydub import AudioSegment
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
-class YouTubeDownloader:
-    def __init__(self, output_dir: Optional[str] = None):
-        """Initialize the downloader with an optional output directory."""
-        self.output_dir = output_dir or os.getcwd()
-        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
+AUDIO_FORMATS = ("mp3", "m4a", "wav", "flac")
 
-    def is_valid_link(self, link: str) -> bool:
-        """Validate if the provided link is a valid YouTube URL."""
-        youtube_regex = (
-            r'(https?://)?(www\.)?'
-            '(youtube|youtu|youtube-nocookie)\.(com|be)/'
-            '(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
+
+@dataclass(frozen=True)
+class DownloadRequest:
+    """Normalized settings for a yt-dlp download."""
+
+    urls: tuple[str, ...]
+    audio: bool
+    audio_format: str
+    audio_quality: str
+    resolution: int | None
+    output_dir: Path
+    allow_playlist: bool
+    verbose: bool
+
+    def __post_init__(self) -> None:
+        """Normalize values supplied by direct callers and the command line."""
+        object.__setattr__(self, "urls", tuple(url.strip() for url in self.urls if url.strip()))
+        object.__setattr__(self, "audio_format", self.audio_format.lower())
+        object.__setattr__(self, "audio_quality", str(self.audio_quality))
+        object.__setattr__(self, "output_dir", Path(self.output_dir))
+
+        if self.audio_format not in AUDIO_FORMATS:
+            raise ValueError(f"Unsupported audio format: {self.audio_format}")
+        if self.resolution is not None and self.resolution <= 0:
+            raise ValueError("Resolution must be a positive number.")
+
+
+def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
+    """Build deterministic yt-dlp options without performing a download."""
+    options: dict[str, object] = {
+        "outtmpl": str(request.output_dir / OUTPUT_TEMPLATE),
+        "noplaylist": not request.allow_playlist,
+        "nooverwrites": True,
+        "verbose": request.verbose,
+    }
+
+    if request.audio:
+        options["format"] = "bestaudio/best"
+        options["postprocessors"] = [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": request.audio_format,
+                "preferredquality": request.audio_quality,
+            }
+        ]
+        return options
+
+    if request.resolution is None:
+        options["format"] = "bestvideo+bestaudio/best"
+    else:
+        options["format"] = (
+            f"bestvideo[height<={request.resolution}]+bestaudio/best[height<={request.resolution}]/best"
         )
-        return bool(re.match(youtube_regex, link))
+    return options
 
-    def is_playlist(self, link: str) -> bool:
-        """Check if the link is a YouTube playlist."""
-        return 'playlist' in link
 
-    def on_progress(self, stream, chunk: bytes, bytes_remaining: int):
-        """Callback function to update download progress."""
-        if not hasattr(self, 'progress_bar'):
-            self.progress_bar = tqdm(
-                total=stream.filesize,
-                unit='iB',
-                unit_scale=True
-            )
-        self.progress_bar.update(len(chunk))
+def download(request: DownloadRequest) -> int:
+    """Invoke yt-dlp and return a shell-compatible exit status."""
+    try:
+        with YoutubeDL(build_ydl_options(request)) as ydl:
+            return int(ydl.download(request.urls))
+    except DownloadError as error:
+        print(f"Download failed: {error}", file=sys.stderr)
+        return 1
 
-    def download_video(self, yt: YouTube, resolution: Optional[str] = None) -> Optional[str]:
-        """Download video with specified resolution or highest available."""
-        try:
-            if resolution:
-                stream = yt.streams.filter(res=resolution).first()
-            else:
-                stream = yt.streams.get_highest_resolution()
 
-            if not stream:
-                logger.warning("Requested resolution not available. Using highest available.")
-                stream = yt.streams.get_highest_resolution()
+def _argument_parser() -> argparse.ArgumentParser:
+    """Create the downloader command-line parser."""
+    parser = argparse.ArgumentParser(description="Download YouTube audio or video with yt-dlp.")
+    parser.add_argument("urls", metavar="URL", nargs="*", help="One or more YouTube video or playlist URLs.")
+    parser.add_argument("-a", "--audio", action="store_true", help="Download audio instead of video.")
+    parser.add_argument(
+        "--audio-format",
+        choices=AUDIO_FORMATS,
+        default="mp3",
+        help="Audio format to extract (default: mp3).",
+    )
+    parser.add_argument(
+        "--audio-quality",
+        default="192",
+        help="FFmpeg audio quality value (default: 192).",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=int,
+        help="Maximum video height, for example 1080.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("."),
+        help="Directory for downloaded files (default: current directory).",
+    )
+    parser.add_argument("--single", action="store_true", help="Download only one video, not a playlist.")
+    parser.add_argument("--verbose", action="store_true", help="Show yt-dlp debug output.")
+    return parser
 
-            logger.info(f"Downloading video: {yt.title}")
-            out_file = stream.download(output_path=self.output_dir)
-            return out_file
-        except PytubeFixError as e:
-            logger.error(f"Error downloading video: {str(e)}")
-            return None
 
-    def download_audio(self, yt: YouTube, audio_format: str = 'mp3') -> Optional[str]:
-        """Download and convert audio to specified format."""
-        try:
-            stream = yt.streams.get_audio_only()
-            if not stream:
-                logger.error("No audio stream available")
-                return None
+def _request_from_values(
+    urls: Sequence[str],
+    audio: bool,
+    audio_format: str,
+    audio_quality: str,
+    resolution: int | None,
+    output_dir: Path,
+    single: bool,
+    verbose: bool,
+) -> DownloadRequest:
+    """Convert parsed command-line values into an immutable request."""
+    return DownloadRequest(
+        urls=tuple(urls),
+        audio=audio,
+        audio_format=audio_format,
+        audio_quality=audio_quality,
+        resolution=resolution,
+        output_dir=output_dir,
+        allow_playlist=not single,
+        verbose=verbose,
+    )
 
-            logger.info(f"Downloading audio: {yt.title}")
-            temp_file = stream.download(
-                output_path=self.output_dir,
-                filename_prefix="temp_audio_"
-            )
 
-            # Convert to desired audio format
-            output_path = os.path.join(
-                self.output_dir,
-                f"{yt.title}.{audio_format}"
-            )
-            
-            # Convert to MP3 using pydub
-            audio = AudioSegment.from_file(temp_file)
-            audio.export(output_path, format="mp3")
-            
-            # Clean up temporary file
-            os.remove(temp_file)
-            return output_path
-        except Exception as e:
-            logger.error(f"Error processing audio: {str(e)}")
-            return None
+def _interactive_request(args: argparse.Namespace) -> DownloadRequest:
+    """Collect the minimum request details when no URL was passed on the command line."""
+    url = input("YouTube URL: ").strip()
+    if not url:
+        raise ValueError("A YouTube URL is required.")
 
-    def process_playlist(self, playlist_url: str, download_type: str, **kwargs) -> None:
-        """Process all videos in a playlist."""
-        try:
-            playlist = Playlist(playlist_url)
-            logger.info(f"Downloading playlist: {playlist.title}")
-            
-            for video_url in playlist.video_urls:
-                self.process_single_video(video_url, download_type, **kwargs)
-        except Exception as e:
-            logger.error(f"Error processing playlist: {str(e)}")
+    download_type = input("Download audio or video? [a/v]: ").strip().lower()
+    if download_type in {"a", "audio"}:
+        audio_format = input("Audio format [mp3/m4a/wav/flac] (mp3): ").strip() or "mp3"
+        return _request_from_values(
+            urls=(url,),
+            audio=True,
+            audio_format=audio_format,
+            audio_quality=args.audio_quality,
+            resolution=None,
+            output_dir=args.output,
+            single=args.single,
+            verbose=args.verbose,
+        )
+    if download_type in {"v", "video"}:
+        resolution_text = input("Maximum video height (blank for best): ").strip()
+        resolution = int(resolution_text) if resolution_text else None
+        return _request_from_values(
+            urls=(url,),
+            audio=False,
+            audio_format=args.audio_format,
+            audio_quality=args.audio_quality,
+            resolution=resolution,
+            output_dir=args.output,
+            single=args.single,
+            verbose=args.verbose,
+        )
+    raise ValueError("Choose 'a' for audio or 'v' for video.")
 
-    def process_single_video(self, video_url: str, download_type: str, **kwargs) -> Optional[str]:
-        """Process a single video URL."""
-        try:
-            yt = YouTube(
-                video_url,
-                on_progress_callback=self.on_progress
-            )
-            
-            if download_type == 'v':
-                return self.download_video(yt, kwargs.get('resolution'))
-            elif download_type == 'a':
-                return self.download_audio(yt, kwargs.get('audio_format', 'mp3'))
-            else:
-                logger.error("Invalid download type specified")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error processing video: {str(e)}")
-            return None
 
-def main():
-    downloader = YouTubeDownloader()
-    
-    while True:
-        try:
-            link = input("\nEnter YouTube video/playlist URL (or 'exit' to quit): ").strip()
-            if link.lower() == 'exit':
-                break
+def parse_args(argv: Sequence[str] | None = None) -> DownloadRequest:
+    """Parse command-line arguments and fall back to an interactive request."""
+    args = _argument_parser().parse_args(argv)
+    if not args.urls:
+        return _interactive_request(args)
+    return _request_from_values(
+        urls=args.urls,
+        audio=args.audio,
+        audio_format=args.audio_format,
+        audio_quality=args.audio_quality,
+        resolution=args.resolution,
+        output_dir=args.output,
+        single=args.single,
+        verbose=args.verbose,
+    )
 
-            if not downloader.is_valid_link(link):
-                logger.error("Invalid YouTube URL. Please try again.")
-                continue
 
-            download_type = input("Download type - Video (V) or Audio (A): ").lower()
-            if download_type not in ['v', 'a']:
-                logger.error("Invalid download type. Please enter 'V' or 'A'.")
-                continue
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the downloader command-line interface."""
+    try:
+        request = parse_args(argv)
+    except ValueError as error:
+        print(f"Invalid input: {error}", file=sys.stderr)
+        return 2
 
-            if download_type == 'v':
-                resolution = input("Enter desired resolution (e.g., 720p, 1080p) or press Enter for highest: ").strip()
-                kwargs = {'resolution': resolution if resolution else None}
-            else:
-                audio_format = input("Enter audio format (mp3/wav) or press Enter for mp3: ").strip() or 'mp3'
-                kwargs = {'audio_format': audio_format}
+    if shutil.which("ffmpeg") is None:
+        print("FFmpeg is required for audio conversion and video merging. Install it and try again.", file=sys.stderr)
+        return 1
+    return download(request)
 
-            if downloader.is_playlist(link):
-                downloader.process_playlist(link, download_type, **kwargs)
-            else:
-                result = downloader.process_single_video(link, download_type, **kwargs)
-                if result:
-                    logger.info(f"Download completed: {result}")
-
-        except KeyboardInterrupt:
-            logger.info("\nDownload cancelled by user.")
-            break
-        except Exception as e:
-            logger.error(f"An unexpected error occurred: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
