@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import platform
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -58,8 +59,12 @@ def _venv_python(repository_root: Path, system_name: str) -> Path:
 def _is_link_or_junction(path: Path) -> bool:
     if path.is_symlink():
         return True
-    is_junction = getattr(path, "is_junction", None)
-    return bool(is_junction and is_junction())
+    try:
+        attributes = path.lstat().st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attributes & reparse_point)
 
 
 def _environment_is_owned(venv_directory: Path) -> bool:

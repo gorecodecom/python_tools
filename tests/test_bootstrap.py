@@ -7,10 +7,24 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from projects import bootstrap
+
+
+def test_windows_reparse_point_is_rejected_on_python_311_compatible_path() -> None:
+    """Windows junction detection must not depend on Path.is_junction from Python 3.12."""
+
+    class ReparsePointPath:
+        def is_symlink(self) -> bool:
+            return False
+
+        def lstat(self) -> SimpleNamespace:
+            return SimpleNamespace(st_file_attributes=0x400)
+
+    assert bootstrap._is_link_or_junction(ReparsePointPath()) is True
 
 
 def test_quiet_command_hides_expected_dependency_probe_error(
