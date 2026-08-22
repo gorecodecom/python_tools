@@ -34,7 +34,7 @@ def test_new_environment_is_created_installed_and_launched(tmp_path: Path) -> No
     """A first start must create the venv, install runtime packages, and open the menu."""
     calls: list[tuple[list[str], Path]] = []
     base_python = "/usr/bin/python3.14"
-    venv_python = str(tmp_path / ".venv" / "bin" / "python")
+    venv_python = str(tmp_path / ".python-tools-venv" / "bin" / "python")
     base_import_check = "import dateparser, pdfplumber, tqdm, yt_dlp"
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
@@ -55,7 +55,7 @@ def test_new_environment_is_created_installed_and_launched(tmp_path: Path) -> No
 
     assert result == 0
     assert calls == [
-        ([base_python, "-m", "venv", str(tmp_path / ".venv")], tmp_path),
+        ([base_python, "-m", "venv", str(tmp_path / ".python-tools-venv")], tmp_path),
         ([venv_python, "-c", base_import_check], tmp_path),
         ([venv_python, "-m", "pip", "install", "--upgrade", "pip"], tmp_path),
         (
@@ -74,21 +74,28 @@ def test_new_environment_is_created_installed_and_launched(tmp_path: Path) -> No
             tmp_path,
         ),
     ]
-    assert (tmp_path / ".venv" / ".python-tools-requirements.sha256").read_text(
+    assert (tmp_path / ".python-tools-venv" / ".python-tools-requirements.sha256").read_text(
         encoding="utf-8"
     ).strip() == hashlib.sha256(requirements.read_bytes()).hexdigest()
+    assert (tmp_path / ".python-tools-venv" / ".python-tools-owned").read_text(
+        encoding="utf-8"
+    ) == "Managed by Python Tools.\n"
 
 
 def test_ready_environment_skips_creation_and_installation(tmp_path: Path) -> None:
     """Normal starts must avoid unnecessary setup work once dependencies are ready."""
     calls: list[tuple[list[str], Path]] = []
-    venv_python_path = tmp_path / ".venv" / "Scripts" / "python.exe"
+    venv_python_path = tmp_path / ".python-tools-venv" / "Scripts" / "python.exe"
     venv_python_path.parent.mkdir(parents=True)
     venv_python_path.touch()
     venv_python = str(venv_python_path)
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
-    (tmp_path / ".venv" / ".python-tools-requirements.sha256").write_text(
+    (tmp_path / ".python-tools-venv" / ".python-tools-owned").write_text(
+        "Managed by Python Tools.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".python-tools-venv" / ".python-tools-requirements.sha256").write_text(
         f"{hashlib.sha256(requirements.read_bytes()).hexdigest()}\n",
         encoding="utf-8",
     )
@@ -145,16 +152,20 @@ def test_failed_environment_creation_stops_before_installation(tmp_path: Path) -
     )
 
     assert result == 7
-    assert calls == [["python3", "-m", "venv", str(tmp_path / ".venv")]]
+    assert calls == [["python3", "-m", "venv", str(tmp_path / ".python-tools-venv")]]
 
 
 def test_unhealthy_existing_environment_is_recreated_before_installation(
     tmp_path: Path,
 ) -> None:
     """An interrupted or stale venv must be repaired instead of reused forever."""
-    venv_python_path = tmp_path / ".venv" / "bin" / "python"
+    venv_python_path = tmp_path / ".python-tools-venv" / "bin" / "python"
     venv_python_path.parent.mkdir(parents=True)
     venv_python_path.touch()
+    (tmp_path / ".python-tools-venv" / ".python-tools-owned").write_text(
+        "Managed by Python Tools.\n",
+        encoding="utf-8",
+    )
     venv_python = str(venv_python_path)
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
@@ -181,7 +192,13 @@ def test_unhealthy_existing_environment_is_recreated_before_installation(
     assert result == 0
     assert calls == [
         [venv_python, "-c", health_check],
-        [base_python, "-m", "venv", "--clear", str(tmp_path / ".venv")],
+        [
+            base_python,
+            "-m",
+            "venv",
+            "--clear",
+            str(tmp_path / ".python-tools-venv"),
+        ],
         [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"],
         [venv_python, "-m", "pip", "install", "--upgrade", "pip"],
         [venv_python, "-m", "pip", "install", "-r", str(requirements)],
@@ -191,10 +208,14 @@ def test_unhealthy_existing_environment_is_recreated_before_installation(
 
 def test_changed_requirements_are_installed_before_launch(tmp_path: Path) -> None:
     """Updated pinned dependencies must be applied even when old imports still succeed."""
-    venv_python_path = tmp_path / ".venv" / "bin" / "python"
+    venv_python_path = tmp_path / ".python-tools-venv" / "bin" / "python"
     venv_python_path.parent.mkdir(parents=True)
     venv_python_path.touch()
-    marker = tmp_path / ".venv" / ".python-tools-requirements.sha256"
+    marker = tmp_path / ".python-tools-venv" / ".python-tools-requirements.sha256"
+    (tmp_path / ".python-tools-venv" / ".python-tools-owned").write_text(
+        "Managed by Python Tools.\n",
+        encoding="utf-8",
+    )
     old_fingerprint = hashlib.sha256(b"dateparser==1.0.0\n").hexdigest()
     marker.write_text(
         f"{old_fingerprint}\n",
@@ -246,6 +267,103 @@ def test_changed_requirements_are_installed_before_launch(tmp_path: Path) -> Non
     )
 
 
+def test_broken_pip_recreates_owned_launcher_environment(tmp_path: Path) -> None:
+    """A venv with a working interpreter but broken pip must be rebuilt before use."""
+    venv_python_path = tmp_path / ".python-tools-venv" / "bin" / "python"
+    venv_python_path.parent.mkdir(parents=True)
+    venv_python_path.touch()
+    owner_marker = tmp_path / ".python-tools-venv" / ".python-tools-owned"
+    owner_marker.write_text("Managed by Python Tools.\n", encoding="utf-8")
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
+    venv_python = str(venv_python_path)
+    health_check = "import sys; raise SystemExit(sys.version_info < (3, 11))"
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], _cwd: Path, _quiet: bool) -> int:
+        calls.append(command)
+        if command == [venv_python, "-m", "pip", "--version"]:
+            return 1
+        if command == [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"]:
+            return 1
+        return 0
+
+    result = bootstrap.prepare_and_launch(
+        repository_root=tmp_path,
+        base_python="python3.14",
+        launcher_arguments=[],
+        system_name="Linux",
+        runner=runner,
+    )
+
+    assert result == 0
+    assert calls[:3] == [
+        [venv_python, "-c", health_check],
+        [venv_python, "-m", "pip", "--version"],
+        [
+            "python3.14",
+            "-m",
+            "venv",
+            "--clear",
+            str(tmp_path / ".python-tools-venv"),
+        ],
+    ]
+    assert [venv_python, "-m", "pip", "install", "-r", str(requirements)] in calls
+
+
+def test_symlinked_launcher_environment_is_refused_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    """Automatic repair must never clear a directory reached through a symlink."""
+    external_target = tmp_path / "external-environment"
+    external_target.mkdir()
+    sentinel = external_target / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    (tmp_path / ".python-tools-venv").symlink_to(external_target, target_is_directory=True)
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], _cwd: Path, _quiet: bool) -> int:
+        calls.append(command)
+        return 0
+
+    result = bootstrap.prepare_and_launch(
+        repository_root=tmp_path,
+        base_python="python3.14",
+        launcher_arguments=[],
+        system_name="Linux",
+        runner=runner,
+    )
+
+    assert result == 1
+    assert calls == []
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_unowned_launcher_environment_is_refused_without_clearing(tmp_path: Path) -> None:
+    """Automatic repair must not clear a pre-existing directory it did not create."""
+    environment = tmp_path / ".python-tools-venv"
+    environment.mkdir()
+    sentinel = environment / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], _cwd: Path, _quiet: bool) -> int:
+        calls.append(command)
+        return 0
+
+    result = bootstrap.prepare_and_launch(
+        repository_root=tmp_path,
+        base_python="python3.14",
+        launcher_arguments=[],
+        system_name="Linux",
+        runner=runner,
+    )
+
+    assert result == 1
+    assert calls == []
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
 def test_supported_python_version_requires_311_or_newer() -> None:
     """The bootstrap must reject Python versions outside the documented support range."""
     assert bootstrap.python_version_is_supported((3, 11)) is True
@@ -264,6 +382,7 @@ def test_windows_dependency_check_includes_timestamp_modules() -> None:
     )
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX starters require /bin/sh")
 @pytest.mark.parametrize("starter_name", ["python-tools.sh", "Python Tools.command"])
 def test_posix_starter_dispatches_to_bootstrap_without_real_setup(
     starter_name: str,

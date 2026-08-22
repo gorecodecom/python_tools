@@ -16,13 +16,13 @@ Starter öffnen, Aktion auswählen und die angezeigten Fragen beantworten.
 | Windows | Double-click / Doppelklick: **`Python Tools.cmd`** |
 | Linux | Double-click **`python-tools.sh`** and choose “Run”, or start it from the file manager as a program / Doppelklick und „Ausführen“ wählen |
 
-The first launch automatically creates an isolated Python environment and installs the required
-Python packages. Later launches open the menu directly. The starter never changes the global
-Python installation.
+The first launch automatically creates the dedicated `.python-tools-venv` environment and
+installs the required Python packages. Later launches open the menu directly. The starter never
+changes the global Python installation or a contributor's separate `.venv`.
 
-Beim ersten Start werden automatisch eine isolierte Python-Umgebung und die benötigten
-Python-Pakete eingerichtet. Spätere Starts öffnen direkt das Menü. Die globale
-Python-Installation wird dabei nicht verändert.
+Beim ersten Start werden automatisch die eigene Umgebung `.python-tools-venv` und die benötigten
+Python-Pakete eingerichtet. Spätere Starts öffnen direkt das Menü. Weder die globale
+Python-Installation noch eine separate Entwickler-`.venv` werden dabei verändert.
 
 ### Requirements / Voraussetzungen
 
@@ -160,18 +160,24 @@ und für die normale Nutzung nicht erforderlich.
 
 ```bash
 # Open the complete guided menu / Vollständiges Menü öffnen
-.venv/bin/python -m projects.launcher
+.python-tools-venv/bin/python -m projects.launcher
 
 # YouTube video to MP3
-.venv/bin/python projects/ytVideoDownloader.py --audio --single \
+.python-tools-venv/bin/python projects/ytVideoDownloader.py --audio --single \
   --output ~/Downloads 'https://www.youtube.com/watch?v=VIDEO_ID'
 
 # Preview PDF renaming / PDF-Umbenennung als Vorschau
-.venv/bin/python projects/pdfRename.py --dry-run '/path/to/pdfs'
+.python-tools-venv/bin/python projects/pdfRename.py --dry-run '/path/to/pdfs'
 
 # Preview PDF date changes / PDF-Datumsänderungen als Vorschau
-.venv/bin/python projects/editCreationDate.py --dry-run '/path/to/pdfs'
+.python-tools-venv/bin/python projects/editCreationDate.py --dry-run '/path/to/pdfs'
 ```
+
+These examples use the macOS/Linux interpreter path. On Windows it is
+`.python-tools-venv\Scripts\python.exe`.
+
+Diese Beispiele verwenden den macOS-/Linux-Pfad. Unter Windows lautet er
+`.python-tools-venv\Scripts\python.exe`.
 
 Every individual script supports `--help` for its complete automation interface.
 
@@ -179,14 +185,14 @@ Jedes einzelne Skript bietet mit `--help` seine vollständige Automatisierungssc
 
 ## Development / Entwicklung
 
-Normal users do not need these steps. Contributors can install the pinned development tools into
-the automatically created environment and run the verification suite:
+Normal users do not need these steps. Contributors should create a separate `.venv`, install the
+pinned development tools, and run the verification suite:
 
-Normale Benutzer benötigen diese Schritte nicht. Mitwirkende können die festgeschriebenen
-Entwicklungswerkzeuge in die automatisch erstellte Umgebung installieren und die Prüfungen
-ausführen:
+Normale Benutzer benötigen diese Schritte nicht. Mitwirkende sollten eine separate `.venv`
+erstellen, die festgeschriebenen Entwicklungswerkzeuge installieren und die Prüfungen ausführen:
 
 ```bash
+python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .

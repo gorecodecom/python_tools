@@ -10,6 +10,9 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+LAUNCHER_VENV_NAME = ".python-tools-venv"
+OWNERSHIP_MARKER_NAME = ".python-tools-owned"
+OWNERSHIP_MARKER_CONTENT = "Managed by Python Tools.\n"
 DEPENDENCY_IMPORT_CHECK = "import dateparser, pdfplumber, tqdm, yt_dlp"
 VENV_VERSION_CHECK = "import sys; raise SystemExit(sys.version_info < (3, 11))"
 CommandRunner = Callable[[list[str], Path, bool], int]
@@ -46,9 +49,44 @@ def _save_requirements_fingerprint(requirements_path: Path, marker_path: Path) -
 
 
 def _venv_python(repository_root: Path, system_name: str) -> Path:
+    venv_directory = repository_root / LAUNCHER_VENV_NAME
     if system_name == "Windows":
-        return repository_root / ".venv" / "Scripts" / "python.exe"
-    return repository_root / ".venv" / "bin" / "python"
+        return venv_directory / "Scripts" / "python.exe"
+    return venv_directory / "bin" / "python"
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    return bool(is_junction and is_junction())
+
+
+def _environment_is_owned(venv_directory: Path) -> bool:
+    marker = venv_directory / OWNERSHIP_MARKER_NAME
+    try:
+        return not marker.is_symlink() and marker.read_text(encoding="utf-8") == (
+            OWNERSHIP_MARKER_CONTENT
+        )
+    except (OSError, UnicodeError):
+        return False
+
+
+def _write_ownership_marker(venv_directory: Path) -> bool:
+    try:
+        venv_directory.mkdir(parents=False, exist_ok=True)
+        (venv_directory / OWNERSHIP_MARKER_NAME).write_text(
+            OWNERSHIP_MARKER_CONTENT,
+            encoding="utf-8",
+        )
+    except (OSError, UnicodeError) as error:
+        print(
+            f"Launcher-Umgebung kann nicht vorbereitet werden / "
+            f"Cannot prepare launcher environment: {error}",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def _venv_is_healthy(
@@ -91,7 +129,25 @@ def prepare_and_launch(
 ) -> int:
     """Create or repair the venv, then start the shared guided launcher."""
     active_system = system_name or platform.system()
-    venv_directory = repository_root / ".venv"
+    venv_directory = repository_root / LAUNCHER_VENV_NAME
+    environment_existed = venv_directory.exists() or venv_directory.is_symlink()
+    if _is_link_or_junction(venv_directory):
+        print(
+            "Verknüpfte Launcher-Umgebung wird aus Sicherheitsgründen abgelehnt. / "
+            "Refusing a linked launcher environment for safety.",
+            file=sys.stderr,
+        )
+        return 1
+    if environment_existed and not _environment_is_owned(venv_directory):
+        print(
+            "Die vorhandene Launcher-Umgebung gehört nicht Python Tools. / "
+            "The existing launcher environment is not owned by Python Tools.",
+            file=sys.stderr,
+        )
+        return 1
+    if not environment_existed and not _write_ownership_marker(venv_directory):
+        return 1
+
     venv_python_path = _venv_python(repository_root, active_system)
     venv_python = str(venv_python_path)
     requirements_path = repository_root / "requirements.txt"
@@ -100,7 +156,7 @@ def prepare_and_launch(
     if not _venv_is_healthy(venv_python_path, repository_root, runner):
         print("Ersteinrichtung wird vorbereitet / Preparing first-time setup ...")
         venv_command = [base_python, "-m", "venv"]
-        if venv_directory.exists():
+        if environment_existed:
             venv_command.append("--clear")
         venv_command.append(str(venv_directory))
         result = runner(
@@ -110,6 +166,8 @@ def prepare_and_launch(
         )
         if result:
             return result
+        if not _write_ownership_marker(venv_directory):
+            return 1
 
     import_check = dependency_import_check(active_system)
     dependencies_ready = runner([venv_python, "-c", import_check], repository_root, True) == 0
