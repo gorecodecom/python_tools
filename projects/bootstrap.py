@@ -1,0 +1,147 @@
+"""Prepare the Python environment before starting the guided launcher."""
+
+from __future__ import annotations
+
+import hashlib
+import platform
+import subprocess
+import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+DEPENDENCY_IMPORT_CHECK = "import dateparser, pdfplumber, tqdm, yt_dlp"
+CommandRunner = Callable[[list[str], Path, bool], int]
+
+
+def python_version_is_supported(version: tuple[int, int]) -> bool:
+    """Return whether a Python major/minor pair satisfies the project minimum."""
+    return version >= (3, 11)
+
+
+def dependency_import_check(system_name: str) -> str:
+    """Return the runtime import check required by one operating system."""
+    if system_name == "Windows":
+        return f"{DEPENDENCY_IMPORT_CHECK}, pywintypes, win32file"
+    return DEPENDENCY_IMPORT_CHECK
+
+
+def _requirements_fingerprint(requirements_path: Path) -> str:
+    return hashlib.sha256(requirements_path.read_bytes()).hexdigest()
+
+
+def _requirements_are_current(requirements_path: Path, marker_path: Path) -> bool:
+    try:
+        saved_fingerprint = marker_path.read_text(encoding="utf-8").strip()
+        return saved_fingerprint == _requirements_fingerprint(requirements_path)
+    except (OSError, UnicodeError):
+        return False
+
+
+def _save_requirements_fingerprint(requirements_path: Path, marker_path: Path) -> None:
+    fingerprint = _requirements_fingerprint(requirements_path)
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(f"{fingerprint}\n", encoding="utf-8")
+
+
+def _venv_python(repository_root: Path, system_name: str) -> Path:
+    if system_name == "Windows":
+        return repository_root / ".venv" / "Scripts" / "python.exe"
+    return repository_root / ".venv" / "bin" / "python"
+
+
+def run_command(command: list[str], cwd: Path, quiet: bool = False) -> int:
+    """Run one setup or launcher command and return its exit code."""
+    try:
+        output_target = subprocess.DEVNULL if quiet else None
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            stdout=output_target,
+            stderr=output_target,
+        ).returncode
+    except OSError as error:
+        print(f"Start fehlgeschlagen / Failed to start: {error}", file=sys.stderr)
+        return 1
+
+
+def prepare_and_launch(
+    *,
+    repository_root: Path,
+    base_python: str,
+    launcher_arguments: Sequence[str],
+    system_name: str | None = None,
+    runner: CommandRunner = run_command,
+) -> int:
+    """Create or repair the venv, then start the shared guided launcher."""
+    active_system = system_name or platform.system()
+    venv_directory = repository_root / ".venv"
+    venv_python_path = _venv_python(repository_root, active_system)
+    venv_python = str(venv_python_path)
+    requirements_path = repository_root / "requirements.txt"
+    requirements_marker = venv_directory / ".python-tools-requirements.sha256"
+
+    if not venv_python_path.is_file():
+        print("Ersteinrichtung wird vorbereitet / Preparing first-time setup ...")
+        result = runner(
+            [base_python, "-m", "venv", str(venv_directory)],
+            repository_root,
+            False,
+        )
+        if result:
+            return result
+
+    import_check = dependency_import_check(active_system)
+    dependencies_ready = runner([venv_python, "-c", import_check], repository_root, True) == 0
+    requirements_current = _requirements_are_current(requirements_path, requirements_marker)
+    if not dependencies_ready or not requirements_current:
+        print("Pakete werden installiert / Installing packages ...")
+        result = runner(
+            [venv_python, "-m", "pip", "install", "--upgrade", "pip"],
+            repository_root,
+            False,
+        )
+        if result:
+            return result
+        result = runner(
+            [
+                venv_python,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(requirements_path),
+            ],
+            repository_root,
+            False,
+        )
+        if result:
+            return result
+        _save_requirements_fingerprint(requirements_path, requirements_marker)
+
+    return runner(
+        [venv_python, "-m", "projects.launcher", *launcher_arguments],
+        repository_root,
+        False,
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Validate the base interpreter and run the setup workflow."""
+    if not python_version_is_supported((sys.version_info.major, sys.version_info.minor)):
+        print(
+            "Python 3.11 oder neuer wird benötigt. / Python 3.11 or newer is required.",
+            file=sys.stderr,
+        )
+        return 2
+
+    return prepare_and_launch(
+        repository_root=REPOSITORY_ROOT,
+        base_python=sys.executable,
+        launcher_arguments=list(argv) if argv is not None else sys.argv[1:],
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
