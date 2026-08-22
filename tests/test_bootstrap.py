@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -110,6 +111,15 @@ def test_ready_environment_skips_creation_and_installation(tmp_path: Path) -> No
             [
                 venv_python,
                 "-c",
+                "import sys; raise SystemExit(sys.version_info < (3, 11))",
+            ],
+            tmp_path,
+        ),
+        ([venv_python, "-m", "pip", "--version"], tmp_path),
+        (
+            [
+                venv_python,
+                "-c",
                 "import dateparser, pdfplumber, tqdm, yt_dlp, pywintypes, win32file",
             ],
             tmp_path,
@@ -136,6 +146,47 @@ def test_failed_environment_creation_stops_before_installation(tmp_path: Path) -
 
     assert result == 7
     assert calls == [["python3", "-m", "venv", str(tmp_path / ".venv")]]
+
+
+def test_unhealthy_existing_environment_is_recreated_before_installation(
+    tmp_path: Path,
+) -> None:
+    """An interrupted or stale venv must be repaired instead of reused forever."""
+    venv_python_path = tmp_path / ".venv" / "bin" / "python"
+    venv_python_path.parent.mkdir(parents=True)
+    venv_python_path.touch()
+    venv_python = str(venv_python_path)
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
+    base_python = "/usr/bin/python3.14"
+    health_check = "import sys; raise SystemExit(sys.version_info < (3, 11))"
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], _cwd: Path, _quiet: bool) -> int:
+        calls.append(command)
+        if command == [venv_python, "-c", health_check]:
+            return 1
+        if command == [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"]:
+            return 1
+        return 0
+
+    result = bootstrap.prepare_and_launch(
+        repository_root=tmp_path,
+        base_python=base_python,
+        launcher_arguments=[],
+        system_name="Linux",
+        runner=runner,
+    )
+
+    assert result == 0
+    assert calls == [
+        [venv_python, "-c", health_check],
+        [base_python, "-m", "venv", "--clear", str(tmp_path / ".venv")],
+        [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"],
+        [venv_python, "-m", "pip", "install", "--upgrade", "pip"],
+        [venv_python, "-m", "pip", "install", "-r", str(requirements)],
+        [venv_python, "-m", "projects.launcher"],
+    ]
 
 
 def test_changed_requirements_are_installed_before_launch(tmp_path: Path) -> None:
@@ -167,6 +218,12 @@ def test_changed_requirements_are_installed_before_launch(tmp_path: Path) -> Non
 
     assert result == 0
     assert calls == [
+        [
+            str(venv_python_path),
+            "-c",
+            "import sys; raise SystemExit(sys.version_info < (3, 11))",
+        ],
+        [str(venv_python_path), "-m", "pip", "--version"],
         [
             str(venv_python_path),
             "-c",
@@ -208,20 +265,44 @@ def test_windows_dependency_check_includes_timestamp_modules() -> None:
 
 
 @pytest.mark.parametrize("starter_name", ["python-tools.sh", "Python Tools.command"])
-def test_posix_starter_reaches_ready_launcher(starter_name: str) -> None:
-    """Both POSIX entry points must bootstrap and reach the real launcher."""
+def test_posix_starter_dispatches_to_bootstrap_without_real_setup(
+    starter_name: str,
+    tmp_path: Path,
+) -> None:
+    """Both POSIX entry points must dispatch without touching the repository venv."""
     repository_root = Path(__file__).resolve().parent.parent
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    recorded_arguments = tmp_path / "arguments.txt"
+    fake_python = fake_bin / "python3.14"
+    fake_python.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-c" ]; then\n'
+        "    exit 0\n"
+        "fi\n"
+        ': > "$PYTHON_TOOLS_ARGS_FILE"\n'
+        'for argument in "$@"; do\n'
+        '    printf \'%s\\n\' "$argument" >> "$PYTHON_TOOLS_ARGS_FILE"\n'
+        "done\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{fake_bin}:/usr/bin:/bin"
+    environment["PYTHON_TOOLS_ARGS_FILE"] = str(recorded_arguments)
 
     completed = subprocess.run(
         ["/bin/sh", str(repository_root / starter_name), "--check"],
         cwd=repository_root,
+        env=environment,
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert (
-        "Python Tools is ready." in completed.stdout
-        or "Python Tools ist startbereit." in completed.stdout
-    )
+    assert recorded_arguments.read_text(encoding="utf-8").splitlines() == [
+        "-m",
+        "projects.bootstrap",
+        "--check",
+    ]

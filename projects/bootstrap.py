@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 DEPENDENCY_IMPORT_CHECK = "import dateparser, pdfplumber, tqdm, yt_dlp"
+VENV_VERSION_CHECK = "import sys; raise SystemExit(sys.version_info < (3, 11))"
 CommandRunner = Callable[[list[str], Path, bool], int]
 
 
@@ -50,6 +51,20 @@ def _venv_python(repository_root: Path, system_name: str) -> Path:
     return repository_root / ".venv" / "bin" / "python"
 
 
+def _venv_is_healthy(
+    venv_python_path: Path,
+    repository_root: Path,
+    runner: CommandRunner,
+) -> bool:
+    if not venv_python_path.is_file():
+        return False
+
+    venv_python = str(venv_python_path)
+    if runner([venv_python, "-c", VENV_VERSION_CHECK], repository_root, True):
+        return False
+    return runner([venv_python, "-m", "pip", "--version"], repository_root, True) == 0
+
+
 def run_command(command: list[str], cwd: Path, quiet: bool = False) -> int:
     """Run one setup or launcher command and return its exit code."""
     try:
@@ -82,10 +97,14 @@ def prepare_and_launch(
     requirements_path = repository_root / "requirements.txt"
     requirements_marker = venv_directory / ".python-tools-requirements.sha256"
 
-    if not venv_python_path.is_file():
+    if not _venv_is_healthy(venv_python_path, repository_root, runner):
         print("Ersteinrichtung wird vorbereitet / Preparing first-time setup ...")
+        venv_command = [base_python, "-m", "venv"]
+        if venv_directory.exists():
+            venv_command.append("--clear")
+        venv_command.append(str(venv_directory))
         result = runner(
-            [base_python, "-m", "venv", str(venv_directory)],
+            venv_command,
             repository_root,
             False,
         )
