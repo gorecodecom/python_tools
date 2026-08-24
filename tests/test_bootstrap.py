@@ -49,7 +49,7 @@ def test_new_environment_is_created_installed_and_launched(tmp_path: Path) -> No
     calls: list[tuple[list[str], Path]] = []
     base_python = "/usr/bin/python3.14"
     venv_python = str(tmp_path / ".python-tools-venv" / "bin" / "python")
-    base_import_check = "import dateparser, pdfplumber, tqdm, yt_dlp"
+    base_import_check = "import dateparser, deno, pdfplumber, tqdm, yt_dlp"
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("dateparser==1.4.2\n", encoding="utf-8")
 
@@ -141,7 +141,7 @@ def test_ready_environment_skips_creation_and_installation(tmp_path: Path) -> No
             [
                 venv_python,
                 "-c",
-                "import dateparser, pdfplumber, tqdm, yt_dlp, pywintypes, win32file",
+                "import dateparser, deno, pdfplumber, tqdm, yt_dlp, pywintypes, win32file",
             ],
             tmp_path,
         ),
@@ -191,7 +191,11 @@ def test_unhealthy_existing_environment_is_recreated_before_installation(
         calls.append(command)
         if command == [venv_python, "-c", health_check]:
             return 1
-        if command == [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"]:
+        if command == [
+            venv_python,
+            "-c",
+            "import dateparser, deno, pdfplumber, tqdm, yt_dlp",
+        ]:
             return 1
         return 0
 
@@ -213,7 +217,7 @@ def test_unhealthy_existing_environment_is_recreated_before_installation(
             "--clear",
             str(tmp_path / ".python-tools-venv"),
         ],
-        [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"],
+        [venv_python, "-c", "import dateparser, deno, pdfplumber, tqdm, yt_dlp"],
         [venv_python, "-m", "pip", "install", "--upgrade", "pip"],
         [venv_python, "-m", "pip", "install", "-r", str(requirements)],
         [venv_python, "-m", "projects.launcher"],
@@ -262,7 +266,7 @@ def test_changed_requirements_are_installed_before_launch(tmp_path: Path) -> Non
         [
             str(venv_python_path),
             "-c",
-            "import dateparser, pdfplumber, tqdm, yt_dlp",
+            "import dateparser, deno, pdfplumber, tqdm, yt_dlp",
         ],
         [str(venv_python_path), "-m", "pip", "install", "--upgrade", "pip"],
         [
@@ -298,7 +302,11 @@ def test_broken_pip_recreates_owned_launcher_environment(tmp_path: Path) -> None
         calls.append(command)
         if command == [venv_python, "-m", "pip", "--version"]:
             return 1
-        if command == [venv_python, "-c", "import dateparser, pdfplumber, tqdm, yt_dlp"]:
+        if command == [
+            venv_python,
+            "-c",
+            "import dateparser, deno, pdfplumber, tqdm, yt_dlp",
+        ]:
             return 1
         return 0
 
@@ -389,10 +397,10 @@ def test_supported_python_version_requires_311_or_newer() -> None:
 def test_windows_dependency_check_includes_timestamp_modules() -> None:
     """A Windows venv without pywin32 must be repaired before opening the menu."""
     assert bootstrap.dependency_import_check("Windows") == (
-        "import dateparser, pdfplumber, tqdm, yt_dlp, pywintypes, win32file"
+        "import dateparser, deno, pdfplumber, tqdm, yt_dlp, pywintypes, win32file"
     )
     assert bootstrap.dependency_import_check("Linux") == (
-        "import dateparser, pdfplumber, tqdm, yt_dlp"
+        "import dateparser, deno, pdfplumber, tqdm, yt_dlp"
     )
 
 

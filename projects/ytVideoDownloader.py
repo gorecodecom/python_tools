@@ -12,6 +12,11 @@ from pathlib import Path
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+try:
+    from deno import find_deno_bin
+except ImportError:
+    find_deno_bin = None
+
 OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
 AUDIO_FORMATS = ("mp3", "m4a", "wav", "flac")
 SUPPORTED_BROWSERS = (
@@ -58,7 +63,21 @@ class DownloadRequest:
             raise ValueError(f"Unsupported browser: {self.cookies_from_browser}")
 
 
-def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
+def find_deno_executable() -> str | None:
+    """Find the managed Deno binary, with a system installation as fallback."""
+    if find_deno_bin is not None:
+        try:
+            return str(find_deno_bin())
+        except OSError:
+            pass
+    return shutil.which("deno")
+
+
+def build_ydl_options(
+    request: DownloadRequest,
+    *,
+    deno_path: str | None = None,
+) -> dict[str, object]:
     """Build deterministic yt-dlp options without performing a download."""
     options: dict[str, object] = {
         "outtmpl": str(request.output_dir / OUTPUT_TEMPLATE),
@@ -66,6 +85,8 @@ def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
         "nooverwrites": True,
         "verbose": request.verbose,
     }
+    if deno_path:
+        options["js_runtimes"] = {"deno": {"path": deno_path}}
     if request.cookies_from_browser:
         options["cookiesfrombrowser"] = (request.cookies_from_browser,)
 
@@ -90,10 +111,20 @@ def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
     return options
 
 
-def download(request: DownloadRequest) -> int:
+def download(request: DownloadRequest, *, deno_path: str | None = None) -> int:
     """Invoke yt-dlp and return a shell-compatible exit status."""
+    active_deno_path = deno_path or find_deno_executable()
+    if active_deno_path is None:
+        print(
+            "JavaScript-Laufzeit Deno fehlt. Starte Python Tools über den normalen Starter "
+            "neu, damit die automatische Einrichtung ausgeführt wird.\n"
+            "Deno JavaScript runtime is missing. Restart Python Tools with its normal starter "
+            "so automatic setup can run.",
+            file=sys.stderr,
+        )
+        return 1
     try:
-        with YoutubeDL(build_ydl_options(request)) as ydl:
+        with YoutubeDL(build_ydl_options(request, deno_path=active_deno_path)) as ydl:
             return int(ydl.download(request.urls))
     except DownloadError as error:
         print(f"Download failed: {error}", file=sys.stderr)

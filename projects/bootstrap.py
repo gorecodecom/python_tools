@@ -14,7 +14,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 LAUNCHER_VENV_NAME = ".python-tools-venv"
 OWNERSHIP_MARKER_NAME = ".python-tools-owned"
 OWNERSHIP_MARKER_CONTENT = "Managed by Python Tools.\n"
-DEPENDENCY_IMPORT_CHECK = "import dateparser, pdfplumber, tqdm, yt_dlp"
+DEPENDENCY_IMPORT_CHECK = "import dateparser, deno, pdfplumber, tqdm, yt_dlp"
 VENV_VERSION_CHECK = "import sys; raise SystemExit(sys.version_info < (3, 11))"
 CommandRunner = Callable[[list[str], Path, bool], int]
 

@@ -18,11 +18,15 @@ Starter öffnen, Aktion auswählen und die angezeigten Fragen beantworten.
 
 The first launch automatically creates the dedicated `.python-tools-venv` environment and
 installs the required Python packages. Later launches open the menu directly. The starter never
-changes the global Python installation or a contributor's separate `.venv`.
+changes the global Python installation or a contributor's separate `.venv`. This setup also
+installs a private Deno JavaScript runtime so current YouTube challenges work without additional
+commands or global software.
 
 Beim ersten Start werden automatisch die eigene Umgebung `.python-tools-venv` und die benötigten
 Python-Pakete eingerichtet. Spätere Starts öffnen direkt das Menü. Weder die globale
-Python-Installation noch eine separate Entwickler-`.venv` werden dabei verändert.
+Python-Installation noch eine separate Entwickler-`.venv` werden dabei verändert. Die Einrichtung
+installiert außerdem eine private Deno-JavaScript-Laufzeit, damit aktuelle YouTube-Prüfungen ohne
+zusätzliche Befehle oder globale Software funktionieren.
 
 ### Requirements / Voraussetzungen
 
@@ -87,6 +91,14 @@ download only the selected video.
 
 Die komfortablen Standardwerte erzeugen eine MP3 mit 192 kbit/s im Ordner `Downloads` des
 aktuellen Benutzers und laden nur das ausgewählte Video herunter.
+
+The required Deno runtime and `yt-dlp` challenge scripts are installed and updated together with
+the other pinned project dependencies. Users do not need to install Node.js, Deno, or a challenge
+solver separately.
+
+Die benötigte Deno-Laufzeit und die `yt-dlp`-Challenge-Skripte werden zusammen mit den übrigen
+festgeschriebenen Projektabhängigkeiten installiert und aktualisiert. Node.js, Deno oder ein
+Challenge-Solver müssen nicht separat installiert werden.
 
 ### YouTube video / YouTube-Video
 

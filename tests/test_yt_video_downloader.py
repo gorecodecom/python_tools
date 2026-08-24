@@ -90,6 +90,18 @@ def test_browser_session_is_passed_to_yt_dlp_for_age_restricted_videos() -> None
     assert downloader.build_ydl_options(request)["cookiesfrombrowser"] == ("safari",)
 
 
+def test_managed_deno_runtime_is_passed_to_yt_dlp_for_youtube_challenges() -> None:
+    """YouTube extraction must use the Deno binary installed with Python Tools."""
+    options = downloader.build_ydl_options(
+        make_request(),
+        deno_path="/managed/python-tools/deno",
+    )
+
+    assert options["js_runtimes"] == {
+        "deno": {"path": "/managed/python-tools/deno"},
+    }
+
+
 def test_parse_args_normalizes_multiple_audio_urls() -> None:
     """CLI audio settings and multiple positional URLs become one immutable request."""
     request = downloader.parse_args(
@@ -155,9 +167,12 @@ def test_download_passes_real_options_to_yt_dlp_without_network(
     monkeypatch.setattr(downloader, "YoutubeDL", FakeYoutubeDL)
     request = make_request(urls=("https://example.com/one", "https://example.com/two"))
 
-    assert downloader.download(request) == 0
+    assert downloader.download(request, deno_path="/managed/python-tools/deno") == 0
     assert received["urls"] == request.urls
-    assert received["options"] == downloader.build_ydl_options(request)
+    assert received["options"] == downloader.build_ydl_options(
+        request,
+        deno_path="/managed/python-tools/deno",
+    )
 
 
 def test_download_returns_nonzero_for_yt_dlp_errors(
@@ -180,5 +195,32 @@ def test_download_returns_nonzero_for_yt_dlp_errors(
 
     monkeypatch.setattr(downloader, "YoutubeDL", FailingYoutubeDL)
 
-    assert downloader.download(make_request()) == 1
+    assert downloader.download(make_request(), deno_path="/managed/python-tools/deno") == 1
     assert "Download failed: source is unavailable" in capsys.readouterr().err
+
+
+def test_download_stops_with_clear_message_when_deno_is_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing JS runtime must fail clearly before yt-dlp attempts a download."""
+
+    class FakeYoutubeDL:
+        def __init__(self, _options: dict[str, object]) -> None:
+            pass
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def download(self, _urls: tuple[str, ...]) -> int:
+            return 0
+
+    monkeypatch.setattr(downloader, "YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr(downloader, "find_deno_executable", lambda: None, raising=False)
+
+    assert downloader.download(make_request()) == 1
+    error_output = capsys.readouterr().err
+    assert "JavaScript-Laufzeit Deno fehlt" in error_output
+    assert "Deno JavaScript runtime is missing" in error_output
