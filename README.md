@@ -78,6 +78,8 @@ keine versteckten Optionen, die kryptische Terminalbefehle voraussetzen.
 - Selectable output folder / frei wählbarer Ausgabeordner
 - Single-video protection or intentional playlist downloads / Schutz vor versehentlichen
   Playlist-Downloads oder bewusstes Herunterladen von Playlists
+- Optional signed-in browser session for age-restricted media / optionale angemeldete
+  Browser-Sitzung für altersbeschränkte Medien
 - Optional detailed diagnostic output / optionale ausführliche Diagnoseausgabe
 
 The friendly defaults produce a 192 kbit/s MP3 in the current user's `Downloads` folder and
@@ -93,12 +95,41 @@ aktuellen Benutzers und laden nur das ausgewählte Video herunter.
   eine maximale Auflösung wie 1080p
 - Selectable output folder / frei wählbarer Ausgabeordner
 - Single-video or playlist mode / Einzelvideo- oder Playlist-Modus
+- Optional signed-in browser session for age-restricted media / optionale angemeldete
+  Browser-Sitzung für altersbeschränkte Medien
 - Optional detailed diagnostic output / optionale ausführliche Diagnoseausgabe
 
 Existing downloaded files are never overwritten. Filenames contain the title and YouTube ID.
 
 Bereits vorhandene Downloads werden niemals überschrieben. Die Dateinamen enthalten Titel und
 YouTube-ID.
+
+#### Age-restricted videos / Altersbeschränkte Videos
+
+For a video that asks you to confirm your age:
+
+1. Sign in to YouTube in your normal browser and make sure that account can play the video.
+2. Start the audio or video download in the guided menu.
+3. Answer **Yes** to **“Use a signed-in browser session?”** and select that browser.
+
+Bei einem Video mit Altersprüfung:
+
+1. Melde dich im normalen Browser bei YouTube an und prüfe, dass dieses Konto das Video abspielen
+   kann.
+2. Starte den Audio- oder Video-Download im geführten Menü.
+3. Antworte bei **„Angemeldete Browser-Sitzung verwenden?“** mit **Ja** und wähle diesen Browser
+   aus.
+
+Python Tools lets `yt-dlp` read the selected browser's current login for this download. It does
+not export, copy, or store the cookies in the project. The browser or operating system may ask
+for permission to access its protected cookie storage. If the browser has multiple profiles,
+open the signed-in profile once before starting the download so it is the most recently used one.
+
+Python Tools lässt `yt-dlp` die aktuelle Anmeldung des ausgewählten Browsers für diesen Download
+lesen. Die Cookies werden weder exportiert noch kopiert oder im Projekt gespeichert. Browser oder
+Betriebssystem können um Erlaubnis für den Zugriff auf den geschützten Cookie-Speicher bitten.
+Bei mehreren Browser-Profilen öffnest du vor dem Download einmal das angemeldete Profil, damit es
+das zuletzt verwendete ist.
 
 Only download media when you have the necessary rights and comply with the service's terms,
 copyright law, and local regulations.
@@ -165,6 +196,11 @@ und für die normale Nutzung nicht erforderlich.
 # YouTube video to MP3
 .python-tools-venv/bin/python projects/ytVideoDownloader.py --audio --single \
   --output ~/Downloads 'https://www.youtube.com/watch?v=VIDEO_ID'
+
+# Age-restricted YouTube video using an existing Safari login
+.python-tools-venv/bin/python projects/ytVideoDownloader.py --audio --single \
+  --cookies-from-browser safari --output ~/Downloads \
+  'https://www.youtube.com/watch?v=VIDEO_ID'
 
 # Preview PDF renaming / PDF-Umbenennung als Vorschau
 .python-tools-venv/bin/python projects/pdfRename.py --dry-run '/path/to/pdfs'

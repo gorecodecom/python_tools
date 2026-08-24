@@ -37,6 +37,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "audio_quality": "Audioqualität in kbit/s",
         "output_directory": "Ausgabeordner",
         "allow_playlist": "Playlist herunterladen, falls die URL eine enthält?",
+        "use_browser_session": (
+            "Angemeldete Browser-Sitzung verwenden (z. B. für Altersbeschränkungen)?"
+        ),
+        "browser": (
+            "Browser: 1=Chrome, 2=Firefox, 3=Safari, 4=Edge, 5=Brave, "
+            "6=Chromium, 7=Opera, 8=Vivaldi, 9=Whale"
+        ),
         "verbose": "Ausführliche technische Meldungen anzeigen?",
         "resolution": "Maximale Videoauflösung (z. B. 1080, Enter = beste)",
         "folder": "PDF-Ordner",
@@ -92,6 +99,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "audio_quality": "Audio quality in kbit/s",
         "output_directory": "Output folder",
         "allow_playlist": "Download the playlist if the URL contains one?",
+        "use_browser_session": (
+            "Use a signed-in browser session (for example for age restrictions)?"
+        ),
+        "browser": (
+            "Browser: 1=Chrome, 2=Firefox, 3=Safari, 4=Edge, 5=Brave, "
+            "6=Chromium, 7=Opera, 8=Vivaldi, 9=Whale"
+        ),
         "verbose": "Show detailed technical messages?",
         "resolution": "Maximum video resolution (e.g. 1080, Enter = best)",
         "folder": "PDF folder",
@@ -239,6 +253,36 @@ def _default_download_directory(home: Path) -> str:
     return str(home / "Downloads")
 
 
+def _collect_browser_arguments(console: Console) -> list[str]:
+    if not console.ask_yes_no("use_browser_session", default=False):
+        return []
+    browser = console.ask_choice(
+        "browser",
+        {
+            "1": "chrome",
+            "chrome": "chrome",
+            "2": "firefox",
+            "firefox": "firefox",
+            "3": "safari",
+            "safari": "safari",
+            "4": "edge",
+            "edge": "edge",
+            "5": "brave",
+            "brave": "brave",
+            "6": "chromium",
+            "chromium": "chromium",
+            "7": "opera",
+            "opera": "opera",
+            "8": "vivaldi",
+            "vivaldi": "vivaldi",
+            "9": "whale",
+            "whale": "whale",
+        },
+        default="1",
+    )
+    return ["--cookies-from-browser", browser]
+
+
 def collect_audio_arguments(console: Console, *, home: Path | None = None) -> list[str]:
     """Collect every audio-download option as ytVideoDownloader CLI arguments."""
     urls = _collect_values(console, "first_url", "more_url")
@@ -262,6 +306,7 @@ def collect_audio_arguments(console: Console, *, home: Path | None = None) -> li
         default=_default_download_directory(home or Path.home()),
     )
     allow_playlist = console.ask_yes_no("allow_playlist", default=False)
+    browser_arguments = _collect_browser_arguments(console)
     verbose = console.ask_yes_no("verbose", default=False)
 
     arguments = [
@@ -275,6 +320,7 @@ def collect_audio_arguments(console: Console, *, home: Path | None = None) -> li
     ]
     if not allow_playlist:
         arguments.append("--single")
+    arguments.extend(browser_arguments)
     if verbose:
         arguments.append("--verbose")
     return [*arguments, *urls]
@@ -292,6 +338,7 @@ def collect_video_arguments(console: Console, *, home: Path | None = None) -> li
         default=_default_download_directory(home or Path.home()),
     )
     allow_playlist = console.ask_yes_no("allow_playlist", default=False)
+    browser_arguments = _collect_browser_arguments(console)
     verbose = console.ask_yes_no("verbose", default=False)
 
     arguments: list[str] = []
@@ -300,6 +347,7 @@ def collect_video_arguments(console: Console, *, home: Path | None = None) -> li
     arguments.extend(["--output", _expanded_path(output)])
     if not allow_playlist:
         arguments.append("--single")
+    arguments.extend(browser_arguments)
     if verbose:
         arguments.append("--verbose")
     return [*arguments, *urls]

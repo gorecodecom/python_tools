@@ -56,6 +56,7 @@ def test_audio_wizard_exposes_format_quality_output_and_single_video_mode() -> N
         "256",
         "~/Music",
         "n",
+        "n",
         "y",
     )
 
@@ -86,6 +87,7 @@ def test_audio_wizard_uses_friendly_defaults() -> None:
         "",
         "",
         "",
+        "",
     )
 
     arguments = launcher.collect_audio_arguments(console, home=Path("/home/alex"))
@@ -103,6 +105,37 @@ def test_audio_wizard_uses_friendly_defaults() -> None:
     ]
 
 
+def test_audio_wizard_can_use_a_signed_in_browser_session() -> None:
+    """Age-restricted audio must be able to use an explicitly selected browser login."""
+    console = make_console(
+        "https://example.com/watch?v=age-restricted",
+        "",
+        "",
+        "",
+        "",
+        "n",
+        "y",
+        "safari",
+        "n",
+    )
+
+    arguments = launcher.collect_audio_arguments(console, home=Path("/home/alex"))
+
+    assert arguments == [
+        "--audio",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "192",
+        "--output",
+        "/home/alex/Downloads",
+        "--single",
+        "--cookies-from-browser",
+        "safari",
+        "https://example.com/watch?v=age-restricted",
+    ]
+
+
 def test_video_wizard_exposes_resolution_playlist_output_and_verbose_mode() -> None:
     """The guided video flow must retain every video downloader option."""
     console = make_console(
@@ -111,6 +144,7 @@ def test_video_wizard_exposes_resolution_playlist_output_and_verbose_mode() -> N
         "1080",
         "/media/videos",
         "y",
+        "n",
         "y",
     )
 
@@ -123,6 +157,31 @@ def test_video_wizard_exposes_resolution_playlist_output_and_verbose_mode() -> N
         "/media/videos",
         "--verbose",
         "https://example.com/playlist",
+    ]
+
+
+def test_video_wizard_can_use_a_signed_in_browser_session() -> None:
+    """Age-restricted video must be able to use an explicitly selected browser login."""
+    console = make_console(
+        "https://example.com/watch?v=age-restricted",
+        "",
+        "",
+        "",
+        "n",
+        "y",
+        "firefox",
+        "n",
+    )
+
+    arguments = launcher.collect_video_arguments(console, home=Path("/home/alex"))
+
+    assert arguments == [
+        "--output",
+        "/home/alex/Downloads",
+        "--single",
+        "--cookies-from-browser",
+        "firefox",
+        "https://example.com/watch?v=age-restricted",
     ]
 
 

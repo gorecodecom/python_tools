@@ -77,6 +77,19 @@ def test_single_option_disables_playlist_downloads() -> None:
     assert request.allow_playlist is False
 
 
+def test_browser_session_is_passed_to_yt_dlp_for_age_restricted_videos() -> None:
+    """An explicitly selected browser must provide its signed-in session to yt-dlp."""
+    request = downloader.parse_args(
+        [
+            "--cookies-from-browser",
+            "safari",
+            "https://example.com/watch?v=age-restricted",
+        ]
+    )
+
+    assert downloader.build_ydl_options(request)["cookiesfrombrowser"] == ("safari",)
+
+
 def test_parse_args_normalizes_multiple_audio_urls() -> None:
     """CLI audio settings and multiple positional URLs become one immutable request."""
     request = downloader.parse_args(

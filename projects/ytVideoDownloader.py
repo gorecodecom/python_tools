@@ -14,6 +14,17 @@ from yt_dlp.utils import DownloadError
 
 OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
 AUDIO_FORMATS = ("mp3", "m4a", "wav", "flac")
+SUPPORTED_BROWSERS = (
+    "brave",
+    "chrome",
+    "chromium",
+    "edge",
+    "firefox",
+    "opera",
+    "safari",
+    "vivaldi",
+    "whale",
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +39,7 @@ class DownloadRequest:
     output_dir: Path
     allow_playlist: bool
     verbose: bool
+    cookies_from_browser: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize values supplied by direct callers and the command line."""
@@ -35,11 +47,15 @@ class DownloadRequest:
         object.__setattr__(self, "audio_format", self.audio_format.lower())
         object.__setattr__(self, "audio_quality", str(self.audio_quality))
         object.__setattr__(self, "output_dir", Path(self.output_dir))
+        if self.cookies_from_browser is not None:
+            object.__setattr__(self, "cookies_from_browser", self.cookies_from_browser.lower())
 
         if self.audio_format not in AUDIO_FORMATS:
             raise ValueError(f"Unsupported audio format: {self.audio_format}")
         if self.resolution is not None and self.resolution <= 0:
             raise ValueError("Resolution must be a positive number.")
+        if self.cookies_from_browser not in {*SUPPORTED_BROWSERS, None}:
+            raise ValueError(f"Unsupported browser: {self.cookies_from_browser}")
 
 
 def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
@@ -50,6 +66,8 @@ def build_ydl_options(request: DownloadRequest) -> dict[str, object]:
         "nooverwrites": True,
         "verbose": request.verbose,
     }
+    if request.cookies_from_browser:
+        options["cookiesfrombrowser"] = (request.cookies_from_browser,)
 
     if request.audio:
         options["format"] = "bestaudio/best"
@@ -119,6 +137,11 @@ def _argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ignore playlist context when a URL also identifies a video.",
     )
+    parser.add_argument(
+        "--cookies-from-browser",
+        choices=SUPPORTED_BROWSERS,
+        help="Use the signed-in session from this browser, for example for age restrictions.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Show yt-dlp debug output.")
     return parser
 
@@ -132,6 +155,7 @@ def _request_from_values(
     output_dir: Path,
     single: bool,
     verbose: bool,
+    cookies_from_browser: str | None,
 ) -> DownloadRequest:
     """Convert parsed command-line values into an immutable request."""
     return DownloadRequest(
@@ -143,6 +167,7 @@ def _request_from_values(
         output_dir=output_dir,
         allow_playlist=not single,
         verbose=verbose,
+        cookies_from_browser=cookies_from_browser,
     )
 
 
@@ -164,6 +189,7 @@ def _interactive_request(args: argparse.Namespace) -> DownloadRequest:
             output_dir=args.output,
             single=args.single,
             verbose=args.verbose,
+            cookies_from_browser=args.cookies_from_browser,
         )
     if download_type in {"v", "video"}:
         resolution_text = input("Maximum video height (blank for best): ").strip()
@@ -177,6 +203,7 @@ def _interactive_request(args: argparse.Namespace) -> DownloadRequest:
             output_dir=args.output,
             single=args.single,
             verbose=args.verbose,
+            cookies_from_browser=args.cookies_from_browser,
         )
     raise ValueError("Choose 'a' for audio or 'v' for video.")
 
@@ -195,6 +222,7 @@ def parse_args(argv: Sequence[str] | None = None) -> DownloadRequest:
         output_dir=args.output,
         single=args.single,
         verbose=args.verbose,
+        cookies_from_browser=args.cookies_from_browser,
     )
 
 
