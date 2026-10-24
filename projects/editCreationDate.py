@@ -36,9 +36,7 @@ def extract_date_from_filename(path: str | Path) -> datetime.datetime | None:
 
         try:
             # Filename dates represent local wall-clock time for filesystem tools.
-            return datetime.datetime(  # noqa: DTZ001
-                *(int(part) for part in match.groups())
-            )
+            return datetime.datetime(*(int(part) for part in match.groups()))
         except ValueError:
             logger.warning("Invalid date in filename: %s", filename)
             return None

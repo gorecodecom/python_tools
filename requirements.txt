@@ -1,6 +1,9 @@
-dateparser==1.4.2
-deno==2.9.5
+brotli==1.2.1
+certifi==2026.10.23
+dateparser==1.4.3
+deno==2.9.8
 pdfplumber==0.11.10
-tqdm==4.70.0
-yt-dlp[default]==2026.8.19
+pillow==13.0.0
+tqdm==4.70.1
+yt-dlp[default]==2026.10.21
 pywin32==312; sys_platform == "win32"

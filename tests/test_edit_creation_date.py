@@ -1,4 +1,3 @@
-# ruff: noqa: DTZ001
 """Tests for cross-platform PDF timestamp updates."""
 
 import datetime
